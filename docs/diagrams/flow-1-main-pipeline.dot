@@ -1,0 +1,92 @@
+// 图 1 · 端到端主流程（三道人工闸门）
+// 渲染：dot -Tpng flow-1-main-pipeline.dot -o flow-1-main-pipeline.png
+digraph pipeline {
+  rankdir=TB;
+  bgcolor="white";
+  fontname="Microsoft YaHei";
+  nodesep=0.55;
+  ranksep=0.5;
+
+  // 图例（图级标签不参与布局排名，不影响节点排版）
+  label="\n图例　　蓝 = agent / LLM 环节　　紫 = ComfyUI 生成　　橙(六边形) = 人工闸门(审核)　　绿 = ffmpeg 合成　　红 = 重生成\n虚线 = 回退 / 循环路径　　实线 = 正常推进";
+  labelloc="b";
+  labeljust="c";
+  fontsize=13;
+  fontcolor="#475569";
+
+  node [fontname="Microsoft YaHei", fontsize=13, shape=box,
+        style="rounded,filled", penwidth=1.7, color="#334155", fillcolor="#e2e8f0"];
+  edge [fontname="Microsoft YaHei", fontsize=11, color="#475569", penwidth=1.7];
+
+  // ---------- 起止 ----------
+  n_start [label="用户输入\n剧情梗概 / 参考图", fillcolor="#e2e8f0", color="#334155", fontsize=14, fontcolor="#0f172a"];
+  n_end   [label="⑦ 成品短剧", fillcolor="#dcfce7", color="#15803d", fontsize=16, fontcolor="#14532d", penwidth=2.4];
+
+  // ---------- agent / LLM 环节 ----------
+  node [fillcolor="#eff6ff", color="#2563eb", fontcolor="#1e293b"];
+  n_slot  [label="① 对话填槽\nagent + LlmClient（OpenAI 兼容）",
+           xlabel="最小必填三项：剧情梗概 + 模式 + 画幅\n其余由 agent 推断或走默认值\n一次性展示完整简报供修改，不逐项追问"];
+  n_brief [label="② 项目简报\n唯一事实源，全部槽位落库"];
+  n_draft [label="②b agent 优化提示词 → 草稿 PromptDraft\n补景别/运镜/风格/负向提示/参考锚点",
+           xlabel="agent 双重职责：既收集信息，也优化提示词\n草稿不直接进生成链路，须用户确认"];
+  n_shot  [label="③ 产出分镜表\n展示优化后提示词，逐条可编辑"];
+
+  // ---------- 人工闸门 ----------
+  node [shape=hexagon, fillcolor="#fff7ed", color="#ea580c", fontcolor="#9a3412", penwidth=2.4];
+  g1 [label="闸门① 提示词 + 分镜表确认\n确认=草稿写入槽位 / 逐条改 / 驳回重优化", fontsize=13,
+      xlabel="性价比最高的闸门：改一行分镜文字，\n比重新生成一段视频便宜一万倍\n确认后才进入耗时的生成阶段"];
+  g2 [label="闸门② 首帧审核\n通过 / 重生成 / 回退", fontsize=13];
+  g3 [label="闸门③ 视频审核\n通过 / 重生成 / 回退", fontsize=13];
+
+  // ---------- ComfyUI 生成 ----------
+  node [shape=box, fillcolor="#faf5ff", color="#9333ea", fontcolor="#1e293b"];
+  n_ref [label="④ 角色 / 场景参考图\n生成 + 审核（一致性基础）"];
+  n_ff  [label="⑤a 首帧图生成\nComfyUI 文生图 / 参考图编辑"];
+  n_vid [label="⑤b 视频生成",
+         xlabel="能力门控：主流程不认模型名（详见图 2）\nv1 仅接 MiniMax H3 → 启用首尾帧双约束 + 原生音频层\n机制保留：未来接新模型时阶段按能力自动开关\n时长须对齐后端 FRAME_GRID（H3 约 5s/段）"];
+  n_tts [label="⑤c 台词 TTS + 审核\n仅当该镜有台词（选填槽位）"];
+
+  // ---------- 判断 / 重生成 / 合成 ----------
+  n_dec [label="还有下一镜？", style="rounded,filled,dashed",
+         fillcolor="#ffffff", color="#64748b", fontcolor="#1e293b", fontsize=14];
+  n_regen [label="分级重生成\nL1 换种子 → L5 回退改分镜\n（详见图 3）",
+           fillcolor="#fef2f2", color="#dc2626", fontcolor="#7f1d1d"];
+  n_mix [label="⑥ ffmpeg 合成\n拼接 · 转场 · 三层混音 · 字幕",
+         fillcolor="#f0fdf4", color="#16a34a", fontcolor="#1e293b",
+         xlabel="三层音频独立开关\nnative(H3环境音) · dialogue(TTS台词) · bgm(素材库)\n台词响起时对 native 做 ducking\n全关=静音；只开 native=有声无台词"];
+
+  // ---------- 主链 ----------
+  n_start -> n_slot;
+  n_slot  -> n_brief;
+  n_brief -> n_draft;
+  n_draft -> n_shot;
+  n_shot  -> g1;
+
+  g1 -> n_draft [label="驳回：带意见重优化", color="#ea580c", fontcolor="#ea580c", style=dashed, constraint=false];
+  g1 -> n_ref  [label="确认通过\n（草稿写入槽位）", fontcolor="#16a34a", color="#16a34a"];
+  n_ref -> n_ff;
+
+  // ---------- 镜头循环 ----------
+  subgraph cluster_shot {
+    label="⑤ 镜头循环 · 串行逐镜推进（审完第 N 段，才生成第 N+1 段）";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#475569";
+    style="dashed"; color="#94a3b8"; bgcolor="#fcfcfd"; penwidth=1.6;
+
+    n_ff -> g2;
+    g2 -> n_vid [label="通过", fontcolor="#16a34a", color="#16a34a"];
+    n_vid -> g3;
+    g3 -> n_tts [label="通过", fontcolor="#16a34a", color="#16a34a"];
+    n_tts -> n_dec;
+    n_dec -> n_ff [label="是，回到 ⑤a", fontcolor="#475569", style=dashed, constraint=false];
+  }
+
+  // ---------- 不通过 → 重生成 ----------
+  g2 -> n_regen [label="不通过", color="#dc2626", fontcolor="#dc2626"];
+  g3 -> n_regen [label="不通过", color="#dc2626", fontcolor="#dc2626"];
+  n_regen -> n_ff   [label="L1~L4 重新生成", color="#dc2626", fontcolor="#dc2626", style=dashed, constraint=false];
+  n_regen -> n_shot [label="L5 回退改分镜", color="#dc2626", fontcolor="#dc2626", style=dashed, constraint=false];
+
+  // ---------- 收尾 ----------
+  n_dec -> n_mix [label="否，全部通过", fontcolor="#16a34a", color="#16a34a"];
+  n_mix -> n_end;
+}

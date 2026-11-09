@@ -1,0 +1,140 @@
+// 图 2 · 能力声明式适配器架构（主流程模型无关）
+// 渲染：dot -Tpng flow-2-adapter-capability.dot -o flow-2-adapter-capability.png
+digraph adapter {
+  rankdir=TB;
+  bgcolor="white";
+  fontname="Microsoft YaHei";
+  nodesep=0.5;
+  ranksep=0.7;
+  compound=true;
+
+  // 图例（图级标签不参与布局排名）
+  label="\n图例　　蓝 = 主流程层(模型无关)　　紫 = 能力层　　青 = 适配器层　　橙 = 工作流模板　　黄(圆柱) = ComfyUI\n实线 = 调用/数据流　　虚线 = 反馈/旁路";
+  labelloc="b";
+  labeljust="c";
+  fontsize=13;
+  fontcolor="#475569";
+
+  node [fontname="Microsoft YaHei", fontsize=12.5, shape=box,
+        style="rounded,filled", penwidth=1.7, color="#334155", fillcolor="#e2e8f0"];
+  edge [fontname="Microsoft YaHei", fontsize=11, color="#475569", penwidth=1.7];
+
+  // ================= ① 主流程层 =================
+  subgraph cluster_L1 {
+    label="① 主流程层 · 模型无关（永不出现模型名）";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#1e3a8a";
+    style="rounded,filled"; fillcolor="#eff6ff"; color="#2563eb"; penwidth=2;
+
+    node [fillcolor="#dbeafe", color="#2563eb", fontcolor="#1e293b"];
+    m1 [label="项目简报 / 分镜表\nShot 序列"];
+    m2 [label="审核状态机\n通过 / 重生成 / 回退"];
+    m3 [label="版本管理\nShotVersion 全量留档"];
+    m4 [label="ffmpeg 合成\n拼接 · 混音 · 字幕"];
+
+    req [label="抽象生成请求\n「给我 5s 图生视频，首帧=X，提示词=Y」",
+         fillcolor="#bfdbfe", color="#1d4ed8", fontcolor="#1e3a8a", fontsize=13, penwidth=2];
+
+    m1 -> req;
+    m2 -> req [style=dashed, constraint=false];
+    req -> m3 [label="返回产物 + 元数据", style=dashed, color="#64748b", fontcolor="#475569"];
+    m3 -> m4 [label="全部审核通过后"];
+  }
+
+  // ================= ② 能力层 =================
+  subgraph cluster_L2 {
+    label="② 能力层 Capability · 后端声明自己支持什么";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#7e22ce";
+    style="rounded,filled"; fillcolor="#faf5ff"; color="#9333ea"; penwidth=2;
+
+    node [shape=note, fillcolor="#f3e8ff", color="#9333ea", fontcolor="#581c87", fontsize=12];
+    cap [label="supports(?) 查询接口\nIMAGE_TO_VIDEO · TEXT_TO_VIDEO\nFIRST_LAST_FRAME · NATIVE_AUDIO\nAUDIO_REFERENCE · REFERENCE_TO_VIDEO\nCONTROL_VIDEO · MAX_DURATION_SEC\nFRAME_GRID · SUPPORTED_ASPECT_RATIOS"];
+
+    gate [label="阶段启用判定\n哪些阶段跑、哪些槽位对用户可见",
+          shape=box, fillcolor="#e9d5ff", color="#7e22ce", fontcolor="#581c87", fontsize=12.5, penwidth=2];
+
+    cap -> gate [label="声明", color="#9333ea", fontcolor="#7e22ce"];
+  }
+
+  req -> cap [label="查询能力", color="#9333ea", fontcolor="#7e22ce"];
+  gate -> req [label="决定启用哪些阶段", color="#9333ea", fontcolor="#7e22ce", style=dashed];
+
+  // ================= ③ 适配器层 =================
+  subgraph cluster_L3 {
+    label="③ 适配器层 GenerationBackend · 模型差异全部封死在这里";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#0f766e";
+    style="rounded,filled"; fillcolor="#f0fdfa"; color="#0d9488"; penwidth=2;
+
+    node [fillcolor="#ccfbf1", color="#0d9488", fontcolor="#134e4a", fontsize=12];
+    a_h3 [label="MiniMaxH3Backend\n（v1 唯一视频后端）\n\n✅ FIRST_LAST_FRAME\n✅ NATIVE_AUDIO\n✅ AUDIO_REFERENCE\n✅ REFERENCE_TO_VIDEO\n❌ CONTROL_VIDEO\n\nFRAME_GRID = 17k+5 帧 @24fps"];
+    a_wan [label="Wan22Backend\n（预留 · v1 不实现）\n\n✅ IMAGE_TO_VIDEO\n✅ TEXT_TO_VIDEO\n✅ CONTROL_VIDEO\n❌ FIRST_LAST_FRAME\n❌ NATIVE_AUDIO\n\nFRAME_GRID = 无",
+           style="rounded,filled,dashed", fillcolor="#f0fdfa", color="#5eead4", fontcolor="#64748b"];
+    a_sr [label="SeedVR2Backend\n\n画质修复 / 放大\n（可选阶段，项目级开关）"];
+    a_img [label="ImageBackend\n首帧图 / 参考图\n(flux2 · hidream · flux2-edit)"];
+    a_tts [label="TtsBackend\n台词配音\n(tts_audio_suite + 音色克隆)"];
+  }
+
+  gate -> a_h3 [label="翻译请求", color="#0d9488", fontcolor="#0f766e"];
+  gate -> a_wan [color="#94a3b8", style=dashed];
+  gate -> a_sr [color="#0d9488", style=dashed];
+  gate -> a_img [color="#0d9488", style=dashed];
+  gate -> a_tts [color="#0d9488", style=dashed];
+
+  // ================= ④ 模板层 =================
+  subgraph cluster_L4 {
+    label="④ 工作流模板层 · 参数化 API-JSON（适配器的实现细节）";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#9a3412";
+    style="rounded,filled"; fillcolor="#fff7ed"; color="#ea580c"; penwidth=2;
+
+    node [fillcolor="#ffedd5", color="#ea580c", fontcolor="#7c2d12", fontsize=12];
+    t1 [label="h3_i2v_flf.json\n首尾帧生视频"];
+    t2 [label="h3_i2v_av.json\n联合音视频"];
+    t3 [label="h3_ref2v.json\n多图参考"];
+    t4 [label="wan22_i2v.json\n图生视频（预留）", style="rounded,filled,dashed", color="#fdba74", fontcolor="#9a3412"];
+    t5 [label="wan22_fun_ctrl.json\n姿态/深度控制（预留）", style="rounded,filled,dashed", color="#fdba74", fontcolor="#9a3412"];
+    t6 [label="seedvr2_upscale.json\n✅ 已可用"];
+    t7 [label="flux2_t2i / edit\nhidream_t2i\n首帧图与参考图"];
+    t8 [label="tts_audio_suite\n台词配音 + 音色克隆"];
+  }
+
+  a_h3 -> t1 [color="#ea580c"];
+  a_h3 -> t2 [color="#ea580c", constraint=false];
+  a_h3 -> t3 [color="#ea580c", constraint=false];
+  a_wan -> t4 [color="#94a3b8", style=dashed, constraint=false];
+  a_wan -> t5 [color="#94a3b8", style=dashed, constraint=false];
+  a_sr  -> t6 [color="#ea580c"];
+  a_img -> t7 [color="#ea580c"];
+  a_tts -> t8 [color="#ea580c"];
+
+  // ================= ComfyUI =================
+  node [shape=cylinder, fillcolor="#fef3c7", color="#d97706", fontcolor="#78350f", fontsize=13, penwidth=2];
+  comfy [label="ComfyUI 原生 API\nPOST /prompt · GET /history/{id}\nWS /ws 收进度 · POST /upload/image"];
+
+  t1 -> comfy [color="#d97706"];
+  t4 -> comfy [color="#94a3b8", style=dashed, constraint=false];
+  t6 -> comfy [color="#d97706", constraint=false];
+  t7 -> comfy [color="#d97706", constraint=false];
+  t8 -> comfy [color="#d97706", constraint=false];
+
+  // ================= 能力门控阶段 =================
+  subgraph cluster_phases {
+    label="能力门控的阶段：序列统一，启用与否由能力决定";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#334155";
+    style="rounded,filled"; fillcolor="#f8fafc"; color="#94a3b8"; penwidth=1.6;
+
+    node [shape=box, fontsize=12, fillcolor="#ffffff", color="#64748b", fontcolor="#1e293b"];
+    p1 [label="首帧图生成\n通用 · 恒启用"];
+    p2 [label="视频生成\n通用 · 恒启用"];
+    p3 [label="尾帧约束\n仅 supports(FIRST_LAST_FRAME)\n→ H3 启用 / Wan2.2 跳过", fillcolor="#faf5ff", color="#9333ea"];
+    p4 [label="原生音频处理\n仅 supports(NATIVE_AUDIO)\n→ H3 启用 / Wan2.2 跳过", fillcolor="#faf5ff", color="#9333ea"];
+    p5 [label="画质修复放大\n项目级开关（SeedVR2）"];
+    p6 [label="台词 TTS\n仅该镜有台词"];
+
+    p1 -> p2 -> p3 -> p4 -> p5 -> p6 [color="#94a3b8"];
+  }
+
+  // ================= 扩展性说明 =================
+  node [shape=note, fillcolor="#dcfce7", color="#15803d", fontcolor="#14532d", fontsize=12.5, penwidth=1.8];
+  ext [label="可拓展性验收标准\n\n新增一个视频模型 =\n写一个适配器 + 声明能力 + 放工作流模板\n主流程与前端零改动\n\n模型私有旋钮走 extra_params(JSON)\n主流程原样透传，不理解也不校验\n非法组合由适配器在提交前拦截"];
+
+  cap -> ext [style=dashed, color="#15803d", constraint=false];
+}

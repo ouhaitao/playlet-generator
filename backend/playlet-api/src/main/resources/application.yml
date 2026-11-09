@@ -1,0 +1,60 @@
+# 短剧生成平台 —— 应用配置
+# 所有外部工具地址一律变量配置，换环境只改这里（或环境变量），不改代码。
+# 环境变量覆盖示例：PLAYLET_COMFYUI_BASE_URL=http://...:28070
+
+server:
+  port: 8080
+
+spring:
+  application:
+    name: playlet-generator
+
+  datasource:
+    # SQLite 文件库（单用户零运维）；文件落在存储目录下
+    url: jdbc:sqlite:${playlet.storage.dir:./data}/playlet.db
+    driver-class-name: org.sqlite.JDBC
+
+  jpa:
+    hibernate:
+      ddl-auto: none          # schema 由 Flyway 管理
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.community.dialect.SQLiteDialect
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+  ai:
+    openai:
+      # LLM：OpenAI 兼容接口。局域网指向内网 LLM，外网指向公网 API（如 DeepSeek）。
+      base-url: ${PLAYLET_LLM_BASE_URL:http://127.0.0.1:11434/v1}
+      api-key: ${PLAYLET_LLM_API_KEY:not-set}
+      chat:
+        options:
+          model: ${PLAYLET_LLM_MODEL:default}
+
+playlet:
+  # 媒体/产物存储根目录（图、视频、音频、成品、SQLite 文件）
+  storage:
+    dir: ${PLAYLET_STORAGE_DIR:./data}
+
+  # ComfyUI 原生 API 地址
+  comfyui:
+    base-url: ${PLAYLET_COMFYUI_BASE_URL:http://127.0.0.1:28070}
+    # 提交后轮询 history 的间隔与超时
+    poll-interval-ms: 1500
+    timeout-seconds: 1800
+
+  # ffmpeg 可执行文件路径（不在 PATH 上也能用；见 DESIGN.md §10.7）
+  ffmpeg:
+    path: ${PLAYLET_FFMPEG_PATH:ffmpeg}
+
+  # 视频后端：v1 仅 MiniMax H3
+  generation:
+    default-backend: MINIMAX_H3
+
+logging:
+  level:
+    org.playlet: INFO

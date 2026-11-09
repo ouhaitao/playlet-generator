@@ -1,0 +1,70 @@
+// 图 3 · 审核—重生成循环（版本化 + 分级重生成）
+// 渲染：dot -Tpng flow-3-review-loop.dot -o flow-3-review-loop.png
+digraph review {
+  rankdir=TB;
+  bgcolor="white";
+  fontname="Microsoft YaHei";
+  nodesep=0.6;
+  ranksep=0.55;
+
+  // 图例（图级标签不参与布局排名）
+  label="\n图例　　紫 = 生成任务　　蓝 = agent 环节　　橙(六边形) = 人工审核　　红 = 分级重生成(L1最便宜→L5最贵)　　绿 = 通过\n虚线 = 回退路径";
+  labelloc="b";
+  labeljust="c";
+  fontsize=13;
+  fontcolor="#475569";
+
+  node [fontname="Microsoft YaHei", fontsize=12.5, shape=box,
+        style="rounded,filled", penwidth=1.7, color="#334155", fillcolor="#e2e8f0"];
+  edge [fontname="Microsoft YaHei", fontsize=11.5, color="#475569", penwidth=1.7];
+
+  // ---------- 生成与版本 ----------
+  n_gen [label="提交生成任务\n（首帧图 / 视频 / TTS）", fillcolor="#faf5ff", color="#9333ea", fontcolor="#1e293b"];
+  n_ver [label="写入新版本 ShotVersion\n提示词 · 种子 · 参数 · 后端 · 产物路径 · 时长",
+         fillcolor="#eff6ff", color="#2563eb", fontcolor="#1e293b", fontsize=12,
+         xlabel="版本化是关键：保留每次产物\n→ 可对比、可回退，误判通过也能退回旧版本\n服务重启不丢状态（全部落库）"];
+
+  // ---------- 审核 ----------
+  n_review [label="人工审核（Web 端）\n看图 / 看视频 / 试听", shape=hexagon,
+            fillcolor="#fff7ed", color="#ea580c", fontcolor="#9a3412", fontsize=14, penwidth=2.4];
+
+  n_pass [label="通过 → 进入下一环节 / 下一镜", fillcolor="#dcfce7", color="#15803d", fontcolor="#14532d", fontsize=13,
+          xlabel="串行节奏的代价：审完第 N 段才生成第 N+1 段\n质量最稳（前镜可影响后镜），但总耗时最长\n2 分钟短剧 ≈ 15~25 镜，全流程小时级"];
+  n_back [label="回退改分镜\n跳出镜头循环，重排 Shot 表", fillcolor="#f1f5f9", color="#64748b", fontcolor="#1e293b"];
+
+  // ---------- agent 诊断 ----------
+  n_diag [label="agent 诊断不满意理由\n依据用户反馈自动建议重生级别\n「脸不对」→ L4 · 「动作僵」→ L2 · 「节奏慢」→ L5",
+          fillcolor="#eff6ff", color="#2563eb", fontcolor="#1e293b", fontsize=12,
+          xlabel="前置闸门更省钱：分镜表确认（闸门①）在生成之前\n改文字 ≪ 重 roll 一段视频\n一镜到底模式下重 roll 还会影响后续镜头的续帧链\n提示词改动一律先成草稿、经确认才提交（§6.3）"];
+
+  // ---------- 分级重生成 ----------
+  subgraph cluster_levels {
+    label="分级重生成 · 成本从低到高（优先低成本）";
+    fontname="Microsoft YaHei"; fontsize=14; fontcolor="#7f1d1d";
+    style="rounded,filled"; fillcolor="#fef2f2"; color="#dc2626"; penwidth=2;
+
+    node [fillcolor="#fee2e2", color="#dc2626", fontcolor="#7f1d1d", fontsize=12.5];
+    L1 [label="L1 · 换种子重 roll\n最便宜，参数不变只换 seed"];
+    L2 [label="L2 · 改提示词 / 参数\ncfg · steps · duration · 运镜 · 景别\n（新提示词仍是草稿，须再确认）"];
+    L3 [label="L3 · 换视频模型重 roll\n（v1 预留：仅接 H3，多模型后启用）"];
+    L4 [label="L4 · 改首帧图\n图生视频时首帧不满意，\n视频重 roll 多少次都没用"];
+    L5 [label="L5 · 回退改分镜脚本\n最贵，改剧情 / 镜头设计"];
+
+    L1 -> L2 -> L3 -> L4 -> L5 [label="仍不满意", color="#dc2626", fontcolor="#dc2626", fontsize=11];
+  }
+
+  // ---------- 主链 ----------
+  n_gen -> n_ver;
+  n_ver -> n_review;
+  n_review -> n_pass [label="满意", color="#16a34a", fontcolor="#16a34a"];
+  n_review -> n_diag [label="不满意 + 理由", color="#dc2626", fontcolor="#dc2626"];
+  n_review -> n_back [label="分镜本身有问题", color="#64748b", fontcolor="#475569", style=dashed];
+
+  n_diag -> L1 [label="建议级别", color="#dc2626", fontcolor="#dc2626"];
+
+  L1 -> n_gen [label="重新提交", color="#9333ea", fontcolor="#7e22ce", style=dashed, constraint=false];
+  L2 -> n_gen [color="#9333ea", style=dashed, constraint=false];
+  L3 -> n_gen [color="#9333ea", style=dashed, constraint=false];
+  L4 -> n_gen [label="重生成首帧后再出视频", color="#9333ea", fontcolor="#7e22ce", style=dashed, constraint=false];
+  L5 -> n_back [color="#64748b", fontcolor="#475569", style=dashed, constraint=false];
+}

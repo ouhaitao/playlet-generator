@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.playlet</groupId>
+    <artifactId>playlet-parent</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>playlet-api</artifactId>
+  <name>playlet-api</name>
+  <description>Spring Boot 启动入口 + REST + WebSocket</description>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.playlet</groupId>
+      <artifactId>playlet-domain</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.playlet</groupId>
+      <artifactId>playlet-llm</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.playlet</groupId>
+      <artifactId>playlet-comfyui</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.playlet</groupId>
+      <artifactId>playlet-media</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.playlet</groupId>
+      <artifactId>playlet-agent</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-websocket</artifactId>
+    </dependency>
+
+    <!-- 单用户本地部署：SQLite 文件库 -->
+    <dependency>
+      <groupId>org.xerial</groupId>
+      <artifactId>sqlite-jdbc</artifactId>
+      <version>3.47.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>org.hibernate.orm</groupId>
+      <artifactId>hibernate-community-dialects</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.flywaydb</groupId>
+      <artifactId>flyway-core</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+    </plugins>
+  </build>
+</project>
