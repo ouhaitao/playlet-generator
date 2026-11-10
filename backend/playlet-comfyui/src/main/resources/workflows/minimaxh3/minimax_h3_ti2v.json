@@ -34,6 +34,15 @@
       "title": "加载图像"
     }
   },
+  "121": {
+    "inputs": {
+      "image": "{{last_frame}}"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像"
+    }
+  },
   "105:11": {
     "inputs": {
       "vae_name": "minimax_h3_video_vae_fp16.safetensors"
@@ -225,6 +234,10 @@
       ],
       "first_frame": [
         "119",
+        0
+      ],
+      "last_frame": [
+        "121",
         0
       ]
     },

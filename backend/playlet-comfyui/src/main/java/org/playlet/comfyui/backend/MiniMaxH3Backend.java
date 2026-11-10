@@ -1,13 +1,17 @@
 package org.playlet.comfyui.backend;
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.playlet.comfyui.client.ComfyClient;
 import org.playlet.comfyui.client.ComfyUiException;
+import org.playlet.comfyui.template.WorkflowPruner;
+import org.playlet.comfyui.template.WorkflowSlot;
 import org.playlet.comfyui.template.WorkflowTemplateLoader;
 import org.playlet.domain.model.Capability;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -15,13 +19,16 @@ import java.util.Set;
 /**
  * MiniMax H3 视频后端（v1 唯一视频后端）。
  *
- * <p>能力声明以**已导出模板实际能跑**为准：当前仅有图生视频模板
- * （minimaxh3/minimax_h3_ti2v，联合音视频 latent → NATIVE_AUDIO）。
- * 首尾帧双约束 / 多图参考 / 文生视频模板尚未导出，故暂不声明对应能力，
- * 避免主流程调用不存在的功能；后续导出模板后在此处增补即可。
+ * <p>提交管线：loadRaw(全填版) → prune(按请求关闭可选槽) → substitute(占位符) → submit。
+ * 可选槽由 sidecar 清单（导入时自动生成）驱动：
+ * <ul>
+ *   <li>first_frame —— 首帧图（源=LoadImage，source 型）</li>
+ *   <li>last_frame —— 尾帧图（若全填版连上则存在）</li>
+ *   <li>audio —— 原生音频（源=VAEDecodeAudio 链）；关闭即产出静音视频</li>
+ * </ul>
  *
- * <p>时长约束：17k+5 帧网格 @24fps。模板内 ComfyMathExpression 已做对齐，
- * 后端传原始秒数即可，validate 仅做过远告警。
+ * <p>能力声明数据驱动：清单里有 last_frame 槽才声明 FIRST_LAST_FRAME，有 audio 槽才声明
+ * NATIVE_AUDIO——"以模板实际能跑为准"从约定变成机器事实。
  */
 @Component
 public class MiniMaxH3Backend implements GenerationBackend {
@@ -31,10 +38,13 @@ public class MiniMaxH3Backend implements GenerationBackend {
 
     private final ComfyClient comfy;
     private final WorkflowTemplateLoader templates;
+    private final org.playlet.comfyui.template.NodeTypeResolver types;
 
-    public MiniMaxH3Backend(ComfyClient comfy, WorkflowTemplateLoader templates) {
+    public MiniMaxH3Backend(ComfyClient comfy, WorkflowTemplateLoader templates,
+                            org.playlet.comfyui.template.NodeTypeResolver types) {
         this.comfy = comfy;
         this.templates = templates;
+        this.types = types;
     }
 
     @Override
@@ -44,10 +54,15 @@ public class MiniMaxH3Backend implements GenerationBackend {
 
     @Override
     public Set<Capability> capabilities() {
-        return Set.of(
-                Capability.IMAGE_TO_VIDEO,
-                Capability.NATIVE_AUDIO
-        );
+        Set<Capability> caps = new HashSet<>(Set.of(Capability.IMAGE_TO_VIDEO));
+        List<WorkflowSlot> slots = templates.loadSlots(TEMPLATE_I2V);
+        if (hasSlot(slots, "last_frame")) {
+            caps.add(Capability.FIRST_LAST_FRAME);
+        }
+        if (hasSlot(slots, "audio")) {
+            caps.add(Capability.NATIVE_AUDIO);
+        }
+        return Set.copyOf(caps);
     }
 
     @Override
@@ -79,22 +94,40 @@ public class MiniMaxH3Backend implements GenerationBackend {
     @Override
     public String submit(GenerationRequest req) {
         validate(req);
+        List<WorkflowSlot> slots = templates.loadSlots(TEMPLATE_I2V);
+
+        // 决定关闭哪些槽
+        Set<String> disabled = new HashSet<>();
+        if (req.firstFrameImage() == null && hasSlot(slots, "first_frame")) {
+            disabled.add("first_frame");
+        }
+        if (req.lastFrameImage() == null && hasSlot(slots, "last_frame")) {
+            disabled.add("last_frame");
+        }
+        if (!Boolean.TRUE.equals(req.nativeAudio()) && hasSlot(slots, "audio")) {
+            disabled.add("audio");
+        }
+
+        ObjectNode wf = templates.loadRaw(TEMPLATE_I2V);
+        wf = WorkflowPruner.prune(wf, slots, disabled, types);
+
         Map<String, String> values = new HashMap<>();
         values.put("prompt", req.prompt() == null ? "" : req.prompt());
-        values.put("first_frame", req.firstFrameImage());
+        if (req.firstFrameImage() != null) values.put("first_frame", req.firstFrameImage());
+        if (req.lastFrameImage() != null) values.put("last_frame", req.lastFrameImage());
         values.put("prefix", "video/playlet_h3");
         values.put("aspect_ratio", toTemplateAspectRatio(req.aspectRatio()));
         values.put("duration", String.valueOf(req.durationSec() == null ? 5.0 : req.durationSec()));
         values.put("seed", String.valueOf(req.seed() == null ? randomSeed() : req.seed()));
+        templates.substitute(wf, values);
 
-        JsonNode workflow = templates.load(TEMPLATE_I2V, values);
-        return comfy.submit(workflow);
+        return comfy.submit(wf);
     }
 
     @Override
     public GenerationResult awaitResult(String promptId) {
-        JsonNode history = comfy.awaitCompletion(promptId);
-        JsonNode file = comfy.firstOutputFile(history);
+        var history = comfy.awaitCompletion(promptId);
+        var file = comfy.firstOutputFile(history);
         if (file == null) {
             throw new ComfyUiException("no output file in history for " + promptId);
         }
@@ -103,6 +136,10 @@ public class MiniMaxH3Backend implements GenerationBackend {
                 file.path("subfolder").asText(""),
                 file.path("type").asText("output"),
                 null);
+    }
+
+    private static boolean hasSlot(List<WorkflowSlot> slots, String name) {
+        return slots.stream().anyMatch(s -> s.name().equals(name));
     }
 
     /** 项目画幅（9:16 等）→ ResolutionSelector 的 COMBO 选项文本。 */

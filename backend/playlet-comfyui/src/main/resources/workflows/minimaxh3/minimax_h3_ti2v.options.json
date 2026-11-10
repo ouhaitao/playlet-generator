@@ -1,0 +1,29 @@
+[
+  {
+    "name": "audio",
+    "hostId": "105:91",
+    "inputName": "audio",
+    "sourceId": "105:23",
+    "sourceOutput": 0,
+    "type": "AUDIO",
+    "sourceKind": "chain"
+  },
+  {
+    "name": "first_frame",
+    "hostId": "105:104",
+    "inputName": "first_frame",
+    "sourceId": "119",
+    "sourceOutput": 0,
+    "type": "IMAGE",
+    "sourceKind": "source"
+  },
+  {
+    "name": "last_frame",
+    "hostId": "105:104",
+    "inputName": "last_frame",
+    "sourceId": "121",
+    "sourceOutput": 0,
+    "type": "IMAGE",
+    "sourceKind": "source"
+  }
+]

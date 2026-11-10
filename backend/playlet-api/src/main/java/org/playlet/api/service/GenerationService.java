@@ -105,7 +105,7 @@ public class GenerationService {
         Long seed = seedOverride;
         GenerationRequest req = GenerationRequest.video(
                 shot.getVisualPrompt(), shot.getDurationSec(), project.getAspectRatio(),
-                shot.getFirstFrameImage(), seed);
+                shot.getFirstFrameImage(), seed, project.isAudioNative());
 
         String promptId = backend.submit(req);
 

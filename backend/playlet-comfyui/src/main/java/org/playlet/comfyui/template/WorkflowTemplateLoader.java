@@ -10,6 +10,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -36,6 +37,38 @@ public class WorkflowTemplateLoader {
         } catch (IOException e) {
             throw new IllegalStateException("failed to read template " + templateName, e);
         }
+    }
+
+    /** 加载原始模板（不做占位符替换），供剪枝器先改写再替换。 */
+    public ObjectNode loadRaw(String templateName) {
+        ClassPathResource res = new ClassPathResource("workflows/" + templateName + ".json");
+        if (!res.exists()) {
+            throw new IllegalStateException("workflow template not found: workflows/" + templateName + ".json");
+        }
+        try (InputStream in = res.getInputStream()) {
+            return (ObjectNode) json.readTree(in);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read template " + templateName, e);
+        }
+    }
+
+    /** 读模板的 sidecar 槽位清单（classpath:workflows/<name>.options.json）；不存在返回空。 */
+    public List<WorkflowSlot> loadSlots(String templateName) {
+        ClassPathResource res = new ClassPathResource("workflows/" + templateName + ".options.json");
+        if (!res.exists()) {
+            return List.of();
+        }
+        try (InputStream in = res.getInputStream()) {
+            return json.readValue(in,
+                    json.getTypeFactory().constructCollectionType(List.class, WorkflowSlot.class));
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read sidecar for " + templateName, e);
+        }
+    }
+
+    /** 对已剪枝的工作流做占位符替换（剪枝在前、替换在后）。 */
+    public void substitute(ObjectNode workflow, Map<String, String> values) {
+        substitute((JsonNode) workflow, values);
     }
 
     /**

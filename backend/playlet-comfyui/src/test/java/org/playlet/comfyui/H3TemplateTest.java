@@ -23,6 +23,7 @@ class H3TemplateTest {
         JsonNode wf = loader.load("minimaxh3/minimax_h3_ti2v", Map.of(
                 "prompt", "a test prompt",
                 "first_frame", "example.png",
+                "last_frame", "example.png",
                 "prefix", "video/playlet_h3",
                 "aspect_ratio", MiniMaxH3Backend.toTemplateAspectRatio("9:16"),
                 "duration", "5",
@@ -34,6 +35,7 @@ class H3TemplateTest {
         // 字符串占位符
         assertEquals("a test prompt", wf.path("105:104").path("inputs").path("prompt").asText());
         assertEquals("example.png", wf.path("119").path("inputs").path("image").asText());
+        assertEquals("example.png", wf.path("121").path("inputs").path("image").asText());
         assertEquals("9:16 (Portrait Widescreen)",
                 wf.path("115").path("inputs").path("aspect_ratio").asText());
 
