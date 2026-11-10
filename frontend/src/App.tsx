@@ -1,14 +1,18 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import ProjectDetail from '@/components/ProjectDetail'
 
 /**
- * 应用骨架（M1 前端最小闭环的展示层起点）。
- * 后续按 DESIGN.md 逐页扩展：对话建项目 / 分镜表确认 / 审核台 / 合成。
+ * 应用入口：项目列表 ↔ 项目详情（分镜 + 审核台）。
+ * M1 用 state 路由，不引 react-router。
  */
 export default function App() {
+  const [projectId, setProjectId] = useState<number | null>(null)
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ['projects'],
     queryFn: api.projects.list,
+    enabled: projectId == null,
   })
 
   return (
@@ -21,28 +25,37 @@ export default function App() {
       </header>
 
       <main className="p-6">
-        <h2 className="mb-4 text-lg font-semibold">项目列表</h2>
-        {isLoading && <p className="text-muted-foreground">加载中…</p>}
-        {error && (
-          <p className="text-destructive">
-            后端未就绪（{String(error)}）。M1 前端骨架已可运行，REST 接口待后端实现。
-          </p>
-        )}
-        {projects && projects.length === 0 && (
-          <p className="text-muted-foreground">暂无项目。从「新建项目」开始对话建项目。</p>
-        )}
-        {projects && projects.length > 0 && (
-          <ul className="space-y-2">
-            {projects.map((p) => (
-              <li key={p.id} className="rounded-lg border p-4">
-                <div className="font-medium">{p.synopsis.slice(0, 60)}</div>
-                <div className="mt-1 text-sm text-muted-foreground">
-                  {p.mode === 'ONE_SHOT' ? '一镜到底' : '分镜'} · {p.aspectRatio} · {p.videoModel} ·{' '}
-                  {p.state}
-                </div>
-              </li>
-            ))}
-          </ul>
+        {projectId != null ? (
+          <ProjectDetail projectId={projectId} onBack={() => setProjectId(null)} />
+        ) : (
+          <>
+            <h2 className="mb-4 text-lg font-semibold">项目列表</h2>
+            {isLoading && <p className="text-muted-foreground">加载中…</p>}
+            {error && (
+              <p className="text-destructive">后端未就绪（{String(error)}）。</p>
+            )}
+            {projects && projects.length === 0 && (
+              <p className="text-muted-foreground">暂无项目。</p>
+            )}
+            {projects && projects.length > 0 && (
+              <ul className="space-y-2">
+                {projects.map((p) => (
+                  <li key={p.id}>
+                    <button
+                      className="w-full rounded-lg border p-4 text-left hover:bg-muted"
+                      onClick={() => setProjectId(p.id)}
+                    >
+                      <div className="font-medium">{p.synopsis.slice(0, 60)}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">
+                        {p.mode === 'ONE_SHOT' ? '一镜到底' : '分镜'} · {p.aspectRatio} ·{' '}
+                        {p.videoModel} · {p.state}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </main>
     </div>

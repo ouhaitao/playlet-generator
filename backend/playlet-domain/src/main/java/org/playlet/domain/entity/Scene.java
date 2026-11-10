@@ -19,7 +19,7 @@ public class Scene {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "project_id")
     private Project project;
 
@@ -41,7 +41,9 @@ public class Scene {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public Project getProject() { return project; }
+    public Long getProjectId() { return project == null ? null : project.getId(); }
     public void setProject(Project project) { this.project = project; }
     public String getName() { return name; }
     public void setName(String name) { this.name = name; }

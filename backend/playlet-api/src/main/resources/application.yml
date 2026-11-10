@@ -43,9 +43,11 @@ playlet:
   # ComfyUI 原生 API 地址
   comfyui:
     base-url: ${PLAYLET_COMFYUI_BASE_URL:http://127.0.0.1:28070}
+    # ComfyUI 产物输出根目录（实测在 ComfyUI\output\，多一层目录）
+    output-dir: ${PLAYLET_COMFYUI_OUTPUT_DIR:F:/ai/comfyui/ComfyUI_windows_portable/ComfyUI/output}
     # 提交后轮询 history 的间隔与超时
     poll-interval-ms: 1500
-    timeout-seconds: 1800
+    timeout-seconds: 3600
 
   # ffmpeg 可执行文件路径（不在 PATH 上也能用；见 DESIGN.md §10.7）
   ffmpeg:

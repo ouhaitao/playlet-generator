@@ -76,8 +76,8 @@ public class MiniMaxH3Backend implements GenerationBackend {
         }
     }
 
-    /** 提交并阻塞等待，返回产物位置。 */
-    public GenerationResult generate(GenerationRequest req) {
+    @Override
+    public String submit(GenerationRequest req) {
         validate(req);
         Map<String, String> values = new HashMap<>();
         values.put("prompt", req.prompt() == null ? "" : req.prompt());
@@ -88,7 +88,11 @@ public class MiniMaxH3Backend implements GenerationBackend {
         values.put("seed", String.valueOf(req.seed() == null ? randomSeed() : req.seed()));
 
         JsonNode workflow = templates.load(TEMPLATE_I2V, values);
-        String promptId = comfy.submit(workflow);
+        return comfy.submit(workflow);
+    }
+
+    @Override
+    public GenerationResult awaitResult(String promptId) {
         JsonNode history = comfy.awaitCompletion(promptId);
         JsonNode file = comfy.firstOutputFile(history);
         if (file == null) {
@@ -98,7 +102,7 @@ public class MiniMaxH3Backend implements GenerationBackend {
                 file.path("filename").asText(null),
                 file.path("subfolder").asText(""),
                 file.path("type").asText("output"),
-                req.durationSec());
+                null);
     }
 
     /** 项目画幅（9:16 等）→ ResolutionSelector 的 COMBO 选项文本。 */

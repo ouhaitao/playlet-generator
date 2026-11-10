@@ -22,7 +22,7 @@ public class Review {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "shot_version_id")
     private ShotVersion shotVersion;
 
@@ -41,7 +41,9 @@ public class Review {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public ShotVersion getShotVersion() { return shotVersion; }
+    public Long getShotVersionId() { return shotVersion == null ? null : shotVersion.getId(); }
     public void setShotVersion(ShotVersion shotVersion) { this.shotVersion = shotVersion; }
     public ReviewDecision getDecision() { return decision; }
     public void setDecision(ReviewDecision decision) { this.decision = decision; }

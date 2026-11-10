@@ -45,8 +45,16 @@ public interface GenerationBackend {
     }
 
     /**
-     * 提交生成并阻塞等待完成，返回产物位置。
-     * 实现内部完成：模板选择 → 占位符填充 → 提交 → 轮询 → 取产物。
+     * 提交生成任务，立即返回 ComfyUI prompt_id（不等待完成）。
+     * 实现内部完成：模板选择 → 占位符填充 → 提交。
      */
-    GenerationResult generate(GenerationRequest req);
+    String submit(GenerationRequest req);
+
+    /** 阻塞等待指定 prompt_id 完成，返回产物位置；超时/失败抛异常。 */
+    GenerationResult awaitResult(String promptId);
+
+    /** 提交并阻塞等待完成（同步便利方法 = submit + awaitResult）。 */
+    default GenerationResult generate(GenerationRequest req) {
+        return awaitResult(submit(req));
+    }
 }

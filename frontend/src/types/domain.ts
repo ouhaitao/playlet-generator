@@ -64,6 +64,7 @@ export interface Shot {
   shotSize: string
   cameraMove: string
   sfxNote?: string
+  firstFrameImage?: string
   state: ShotState
   characterIds: number[]
 }
@@ -79,6 +80,9 @@ export interface ShotVersion {
   durationSec?: number
   reviewState: 'PENDING' | 'APPROVED' | 'REJECTED'
   regenLevel?: number
+  comfyPromptId?: string
+  genState: 'GENERATING' | 'DONE' | 'FAILED'
+  errorMessage?: string
 }
 
 export interface PromptDraft {

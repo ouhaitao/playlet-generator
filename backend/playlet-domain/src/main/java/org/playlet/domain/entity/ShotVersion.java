@@ -24,7 +24,7 @@ public class ShotVersion {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "shot_id")
     private Shot shot;
 
@@ -51,6 +51,17 @@ public class ShotVersion {
     @Column(length = 500)
     private String artifactPath;
 
+    /** ComfyUI prompt_id（异步生成关联与进度订阅） */
+    @Column(length = 64)
+    private String comfyPromptId;
+
+    /** GENERATING | DONE | FAILED */
+    @Column(nullable = false, length = 16)
+    private String genState = "GENERATING";
+
+    @Column(length = 2000)
+    private String errorMessage;
+
     private Double durationSec;
 
     /** PENDING | APPROVED | REJECTED */
@@ -68,8 +79,10 @@ public class ShotVersion {
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
+    @com.fasterxml.jackson.annotation.JsonIgnore
     public Shot getShot() { return shot; }
     public void setShot(Shot shot) { this.shot = shot; }
+    public Long getShotId() { return shot == null ? null : shot.getId(); }
     public int getVersionNo() { return versionNo; }
     public void setVersionNo(int versionNo) { this.versionNo = versionNo; }
     public VersionKind getKind() { return kind; }
@@ -84,6 +97,12 @@ public class ShotVersion {
     public void setParamsJson(String paramsJson) { this.paramsJson = paramsJson; }
     public String getArtifactPath() { return artifactPath; }
     public void setArtifactPath(String artifactPath) { this.artifactPath = artifactPath; }
+    public String getComfyPromptId() { return comfyPromptId; }
+    public void setComfyPromptId(String comfyPromptId) { this.comfyPromptId = comfyPromptId; }
+    public String getGenState() { return genState; }
+    public void setGenState(String genState) { this.genState = genState; }
+    public String getErrorMessage() { return errorMessage; }
+    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
     public Double getDurationSec() { return durationSec; }
     public void setDurationSec(Double durationSec) { this.durationSec = durationSec; }
     public String getReviewState() { return reviewState; }

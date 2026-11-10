@@ -49,4 +49,21 @@ export const api = {
   scenes: {
     list: (projectId: number) => json<Scene[]>(`/projects/${projectId}/scenes`),
   },
+  review: {
+    approve: (versionId: number) =>
+      json<ShotVersion>(`/versions/${versionId}/approve`, { method: 'POST' }),
+    reject: (versionId: number, feedback: string, regenLevel?: number) =>
+      json<ShotVersion>(`/versions/${versionId}/reject`, {
+        method: 'POST',
+        body: JSON.stringify({ feedback, regenLevel }),
+      }),
+  },
+  generate: {
+    /** 提交视频生成，立即返回 GENERATING 版本（异步）。 */
+    video: (shotId: number, seed?: number) =>
+      json<ShotVersion>(`/shots/${shotId}/generate-video`, {
+        method: 'POST',
+        body: JSON.stringify(seed != null ? { seed } : {}),
+      }),
+  },
 }

@@ -39,7 +39,9 @@ public class Project {
     @Column(length = 200)
     private String style;
 
+    @Column(name = "resolution_w")
     private Integer resolutionW;
+    @Column(name = "resolution_h")
     private Integer resolutionH;
 
     /** 音频三层开关：原生层 / 台词层 / BGM 层 */

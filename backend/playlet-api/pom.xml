@@ -59,6 +59,11 @@
       <groupId>org.flywaydb</groupId>
       <artifactId>flyway-core</artifactId>
     </dependency>
+    <!-- Boot 4 起 Flyway 自动配置独立成模块，starter 不再传递引入 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-flyway</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>org.springframework.boot</groupId>

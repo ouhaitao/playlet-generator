@@ -74,6 +74,18 @@
   </dependencyManagement>
 
   <build>
+    <plugins>
+      <!-- 用 BOM import 而非继承 spring-boot-starter-parent 时，
+           需自行开启 -parameters（@PathVariable/@RequestParam 按名绑定依赖它）。
+           显式声明而非 pluginManagement，确保对所有模块生效。 -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+    </plugins>
     <pluginManagement>
       <plugins>
         <plugin>
