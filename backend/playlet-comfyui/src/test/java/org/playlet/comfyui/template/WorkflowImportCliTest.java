@@ -29,7 +29,9 @@ class WorkflowImportCliTest {
                 "import problems: " + result.problems());
         assertTrue(Files.exists(result.sidecar()), "sidecar written: " + result.sidecar());
         System.out.println("[import-cli] OK slots="
-                + result.slots().stream().map(s -> s.name() + "(" + s.sourceKind() + ")").toList()
-                + " sidecar=" + result.sidecar());
+                + result.slots().stream().map(s -> s.name() + "(" + s.sourceKind() + ")").toList());
+        System.out.println("[import-cli] substitutions(" + result.substitutions().size() + "):");
+        result.substitutions().forEach(s -> System.out.println("    " + s));
+        result.notes().forEach(n -> System.out.println("    note: " + n));
     }
 }

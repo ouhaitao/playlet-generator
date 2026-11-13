@@ -39,6 +39,7 @@ public class MiniMaxH3Backend implements GenerationBackend {
     private final ComfyClient comfy;
     private final WorkflowTemplateLoader templates;
     private final org.playlet.comfyui.template.NodeTypeResolver types;
+    private Set<Capability> capabilities;
 
     public MiniMaxH3Backend(ComfyClient comfy, WorkflowTemplateLoader templates,
                             org.playlet.comfyui.template.NodeTypeResolver types) {
@@ -54,6 +55,9 @@ public class MiniMaxH3Backend implements GenerationBackend {
 
     @Override
     public Set<Capability> capabilities() {
+        if (capabilities != null) {
+            return Set.copyOf(capabilities);
+        }
         Set<Capability> caps = new HashSet<>(Set.of(Capability.IMAGE_TO_VIDEO));
         List<WorkflowSlot> slots = templates.loadSlots(TEMPLATE_I2V);
         if (hasSlot(slots, "last_frame")) {
@@ -62,6 +66,7 @@ public class MiniMaxH3Backend implements GenerationBackend {
         if (hasSlot(slots, "audio")) {
             caps.add(Capability.NATIVE_AUDIO);
         }
+        capabilities = caps;
         return Set.copyOf(caps);
     }
 

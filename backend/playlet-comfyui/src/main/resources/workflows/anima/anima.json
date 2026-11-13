@@ -1,0 +1,276 @@
+{
+  "3": {
+    "inputs": {
+      "seed": "{{num:seed}}",
+      "steps": "{{num:steps}}",
+      "cfg": "{{num:cfg}}",
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "31",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "{{prompt}}",
+      "clip": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码（正面）"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "{{negative}}",
+      "clip": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码（负面）"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "{{prefix}}",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "11": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "12": {
+    "inputs": {
+      "unet_name": "anima-base-v1.0.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "18": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "22": {
+    "inputs": {
+      "image": "{{first_frame}}"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.21.0"
+    }
+  },
+  "23": {
+    "inputs": {
+      "switch": "{{bool:img2img}}",
+      "on_false": [
+        "32",
+        0
+      ],
+      "on_true": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "图生图"
+    }
+  },
+  "24": {
+    "inputs": {
+      "pixels": [
+        "22",
+        0
+      ],
+      "vae": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "30": {
+    "inputs": {
+      "lora_name": "{{lora_name}}",
+      "strength_model": "{{num:lora_strength}}",
+      "model": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "31": {
+    "inputs": {
+      "switch": "{{bool:lora}}",
+      "on_false": [
+        "12",
+        0
+      ],
+      "on_true": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "是否使用LORA"
+    }
+  },
+  "32": {
+    "inputs": {
+      "width": [
+        "36",
+        0
+      ],
+      "height": [
+        "37",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "34": {
+    "inputs": {
+      "value": "{{num:height}}"
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "长边"
+    }
+  },
+  "35": {
+    "inputs": {
+      "value": "{{num:width}}"
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "短边"
+    }
+  },
+  "36": {
+    "inputs": {
+      "switch": [
+        "38",
+        0
+      ],
+      "on_false": [
+        "35",
+        0
+      ],
+      "on_true": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "宽"
+    }
+  },
+  "37": {
+    "inputs": {
+      "switch": [
+        "38",
+        0
+      ],
+      "on_false": [
+        "34",
+        0
+      ],
+      "on_true": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "长"
+    }
+  },
+  "38": {
+    "inputs": {
+      "value": "{{bool:swap}}"
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "是否为横图"
+    }
+  }
+}

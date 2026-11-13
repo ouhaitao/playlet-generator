@@ -197,4 +197,53 @@ public final class WorkflowPruner {
             super(message);
         }
     }
+
+    // ================= 开关常量折叠 =================
+
+    /**
+     * 折叠常量开关（占位符替换**之后**调用）：
+     * 对每个 {@code switch} 输入为字面量布尔的 ComfySwitchNode，把其输出槽 0 的所有消费端
+     * 改接到选中分支（true→on_true / false→on_false）的链接上，然后删除开关节点，
+     * 最后孤儿 GC——**未选中分支上仅被开关引用的节点（如关闭的 LoRA 加载器）随之删除**，
+     * 其输入（如不存在的 lora_name）不再进入提交校验。
+     *
+     * <p>switch 输入仍是链接（非常量）的开关不折叠，保持原样。
+     *
+     * @return 修改后的同一对象（链式调用）
+     */
+    public static ObjectNode foldConstantSwitches(ObjectNode wf, NodeTypeResolver types) {
+        boolean folded = true;
+        while (folded) {
+            folded = false;
+            List<String> switchIds = new ArrayList<>();
+            wf.fieldNames().forEachRemaining(id -> {
+                if ("ComfySwitchNode".equals(wf.path(id).path("class_type").asText())) {
+                    switchIds.add(id);
+                }
+            });
+            for (String id : switchIds) {
+                ObjectNode sw = node(wf, id);
+                JsonNode switchVal = sw.path("inputs").path("switch");
+                if (!switchVal.isBoolean()) {
+                    continue; // 非常量（链接或未替换占位符），不折叠
+                }
+                JsonNode selected = switchVal.asBoolean()
+                        ? sw.path("inputs").path("on_true")
+                        : sw.path("inputs").path("on_false");
+                if (!isLink(selected)) {
+                    throw new PruneException("switch " + id + " selected branch is not a link");
+                }
+                for (Consumer c : consumersOf(wf, id, 0)) {
+                    ObjectNode host = node(wf, c.hostId());
+                    ((ObjectNode) host.get("inputs")).set(c.inputName(), selected.deepCopy());
+                }
+                wf.remove(id);
+                folded = true;
+            }
+        }
+        // GC 不可达分支（如关闭的 LoRA 加载器、未选中的宽高 Primitive）
+        Set<String> orphans = findOrphans(wf, Set.of(), types);
+        orphans.forEach(wf::remove);
+        return wf;
+    }
 }

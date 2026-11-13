@@ -14,5 +14,11 @@ public enum Capability {
     AUDIO_REFERENCE,
     REFERENCE_TO_VIDEO,
     CONTROL_VIDEO,
-    UPSCALE
+    UPSCALE,
+    /** 文生图 */
+    TEXT_TO_IMAGE,
+    /** 图生图（首帧/参考图驱动） */
+    IMAGE_TO_IMAGE,
+    /** LoRA 开关（switch 常量折叠机制） */
+    LORA
 }

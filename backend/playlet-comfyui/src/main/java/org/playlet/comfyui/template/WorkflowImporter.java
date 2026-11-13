@@ -38,20 +38,25 @@ public class WorkflowImporter {
     }
 
     /** 导入结果。 */
-    public record ImportResult(List<WorkflowSlot> slots, List<String> problems, Path sidecar) {
+    public record ImportResult(List<WorkflowSlot> slots, List<String> problems, Path sidecar,
+                               List<String> substitutions, List<String> notes) {
     }
 
     public ImportResult importWorkflow(Path templateJson) throws IOException {
-        ObjectNode wf = (ObjectNode) json.readTree(Files.readString(templateJson));
+        ObjectNode raw = (ObjectNode) json.readTree(Files.readString(templateJson));
 
-        List<String> problems = new ArrayList<>(WorkflowValidator.validate(wf, types));
+        List<String> problems = new ArrayList<>(WorkflowValidator.validate(raw, types));
         if (!problems.isEmpty()) {
-            return new ImportResult(List.of(), problems, null);
+            return new ImportResult(List.of(), problems, null, List.of(), List.of());
         }
+
+        // 自动参数化：硬编码值 → 占位符（规则引擎，见 WorkflowParameterizer）
+        WorkflowParameterizer.Result param = WorkflowParameterizer.parameterize(raw);
+        ObjectNode wf = param.workflow();
 
         List<WorkflowSlot> slots = SlotExtractor.extract(wf, types);
 
-        // 2^k 组合自检
+        // 2^k 组合自检（对参数化后的工作流）
         if (slots.size() <= MAX_COMBINATION_SLOTS) {
             for (int mask = 0; mask < (1 << slots.size()); mask++) {
                 Set<String> disabled = new HashSet<>();
@@ -75,14 +80,16 @@ public class WorkflowImporter {
         }
 
         if (!problems.isEmpty()) {
-            return new ImportResult(slots, problems, null);
+            return new ImportResult(slots, problems, null, param.substitutions(), param.notes());
         }
 
+        // 落盘：参数化后的工作流 + sidecar
+        json.writerWithDefaultPrettyPrinter().writeValue(templateJson.toFile(), wf);
         Path sidecar = sidecarPath(templateJson);
         json.writerWithDefaultPrettyPrinter().writeValue(sidecar.toFile(), slots);
-        log.info("imported {} with {} slot(s): {}", templateJson.getFileName(), slots.size(),
-                slots.stream().map(WorkflowSlot::name).toList());
-        return new ImportResult(slots, List.of(), sidecar);
+        log.info("imported {} with {} slot(s), {} substitution(s)",
+                templateJson.getFileName(), slots.size(), param.substitutions().size());
+        return new ImportResult(slots, List.of(), sidecar, param.substitutions(), param.notes());
     }
 
     /** 读已存在的 sidecar；不存在返回空。 */
