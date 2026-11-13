@@ -93,7 +93,9 @@ export interface PromptDraft {
   fieldName: string
   baseContent?: string
   content: string
+  negativePrompt?: string
   versionNo: number
   state: DraftState
   feedback?: string
+  confirmedAt?: string
 }

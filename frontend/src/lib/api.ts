@@ -48,6 +48,12 @@ export const api = {
   drafts: {
     list: (ownerType: string, ownerId: number) =>
       json<PromptDraft[]>(`/drafts?ownerType=${ownerType}&ownerId=${ownerId}`),
+    /** 触发 agent 优化，产出新草稿（旧未决草稿作废）。 */
+    optimize: (ownerType: string, ownerId: number, fieldName: string, feedback?: string) =>
+      json<PromptDraft>(`/drafts/optimize`, {
+        method: 'POST',
+        body: JSON.stringify({ ownerType, ownerId, fieldName, feedback }),
+      }),
     confirm: (draftId: number) =>
       json<PromptDraft>(`/drafts/${draftId}/confirm`, { method: 'POST' }),
     reject: (draftId: number, feedback: string) =>

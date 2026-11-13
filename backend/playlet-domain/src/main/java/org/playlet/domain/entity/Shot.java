@@ -75,6 +75,10 @@ public class Shot {
     @Column(name = "first_frame_image", length = 500)
     private String firstFrameImage;
 
+    /** 已确认的负向提示（§6.3 确认门写入；生成链路只读这里） */
+    @Column(name = "negative_prompt", length = 4000)
+    private String negativePrompt;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 32)
     private ShotState state = ShotState.PENDING;
@@ -122,6 +126,8 @@ public class Shot {
     public void setSfxNote(String sfxNote) { this.sfxNote = sfxNote; }
     public String getFirstFrameImage() { return firstFrameImage; }
     public void setFirstFrameImage(String firstFrameImage) { this.firstFrameImage = firstFrameImage; }
+    public String getNegativePrompt() { return negativePrompt; }
+    public void setNegativePrompt(String negativePrompt) { this.negativePrompt = negativePrompt; }
     public ShotState getState() { return state; }
     public void setState(ShotState state) { this.state = state; }
     @com.fasterxml.jackson.annotation.JsonIgnore

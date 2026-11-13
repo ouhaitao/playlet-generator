@@ -123,7 +123,8 @@ public class GenerationService {
         Long seed = seedOverride;
         GenerationRequest req = GenerationRequest.video(
                 shot.getVisualPrompt(), shot.getDurationSec(), project.getAspectRatio(),
-                shot.getFirstFrameImage(), seed, project.isAudioNative());
+                shot.getFirstFrameImage(), seed, project.isAudioNative(),
+                negativeExtra(shot));
 
         String promptId = backend.submit(req);
 
@@ -171,7 +172,7 @@ public class GenerationService {
 
         int[] wh = resolveImageSize(project);
         GenerationRequest req = GenerationRequest.image(
-                shot.getVisualPrompt(), wh[0], wh[1], seedOverride);
+                shot.getVisualPrompt(), wh[0], wh[1], seedOverride, negativeExtra(shot));
         String promptId = backend.submit(req);
 
         int nextNo = versions.findByShot_IdOrderByVersionNoAsc(shotId).size() + 1;
@@ -218,6 +219,12 @@ public class GenerationService {
      * 首帧图分辨率：项目显式分辨率优先；否则按画幅映射到常见基准。
      * anima/illustrious 模板 width/height 均为占位符，必须有值。
      */
+    /** 已确认的负向提示 → extraParams（SD 系图像后端消费 negative 键；视频后端忽略）。 */
+    private static java.util.Map<String, Object> negativeExtra(Shot shot) {
+        String neg = shot.getNegativePrompt();
+        return neg == null || neg.isBlank() ? java.util.Map.of() : java.util.Map.of("negative", neg);
+    }
+
     private int[] resolveImageSize(Project project) {
         if (project.getResolutionW() != null && project.getResolutionH() != null) {
             return new int[]{project.getResolutionW(), project.getResolutionH()};

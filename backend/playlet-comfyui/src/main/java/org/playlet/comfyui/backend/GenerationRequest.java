@@ -17,7 +17,8 @@ import java.util.Map;
  * @param lastFrameImage  尾帧图；仅 supports(FIRST_LAST_FRAME) 时有意义
  * @param referenceImages 参考图列表（角色/场景一致性）
  * @param nativeAudio 是否保留模型原生音频（H3）；false 时剪枝器关闭 audio 槽产出静音视频
- * @param extraParams 模型私有旋钮（JSON 透传，主流程不理解不校验）
+ * @param extraParams 模型私有旋钮（JSON 透传，主流程不理解不校验）；
+ *                  约定键：negative（负向提示，SD 系图像后端消费）、lora_name/lora_strength、steps、cfg
  */
 public record GenerationRequest(
         String kind,
@@ -35,13 +36,24 @@ public record GenerationRequest(
 ) {
 
     public static GenerationRequest video(String prompt, double durationSec, String aspectRatio,
-                                          String firstFrame, Long seed, Boolean nativeAudio) {
+                                           String firstFrame, Long seed, Boolean nativeAudio) {
+        return video(prompt, durationSec, aspectRatio, firstFrame, seed, nativeAudio, Map.of());
+    }
+
+    public static GenerationRequest video(String prompt, double durationSec, String aspectRatio,
+                                           String firstFrame, Long seed, Boolean nativeAudio,
+                                           Map<String, Object> extraParams) {
         return new GenerationRequest("VIDEO", prompt, durationSec, aspectRatio, null, null, seed,
-                firstFrame, null, java.util.List.of(), nativeAudio, Map.of());
+                firstFrame, null, java.util.List.of(), nativeAudio, extraParams);
     }
 
     public static GenerationRequest image(String prompt, int w, int h, Long seed) {
+        return image(prompt, w, h, seed, Map.of());
+    }
+
+    public static GenerationRequest image(String prompt, int w, int h, Long seed,
+                                           Map<String, Object> extraParams) {
         return new GenerationRequest("FIRST_FRAME", prompt, null, null, w, h, seed,
-                null, null, java.util.List.of(), null, Map.of());
+                null, null, java.util.List.of(), null, extraParams);
     }
 }

@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useProgressEvents, type ProgressEventMsg } from '@/hooks/useProgressEvents'
+import DraftGate from '@/components/DraftGate'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -96,6 +97,9 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
           </span>
         )}
       </div>
+
+      {/* ──  提示词确认门（§6.3）── */}
+      <DraftGate shotId={shotId} />
 
       {/* ── 闸门②：首帧图 ── */}
       <Card>

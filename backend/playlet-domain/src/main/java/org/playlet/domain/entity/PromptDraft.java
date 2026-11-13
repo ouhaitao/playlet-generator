@@ -38,6 +38,10 @@ public class PromptDraft {
     @Column(nullable = false, length = 8000)
     private String content;
 
+    /** agent 产出的负向提示（随草稿一起审核，确认后写入槽位） */
+    @Column(length = 4000)
+    private String negativePrompt;
+
     @Column(nullable = false)
     private int versionNo;
 
@@ -67,6 +71,8 @@ public class PromptDraft {
     public void setBaseContent(String baseContent) { this.baseContent = baseContent; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+    public String getNegativePrompt() { return negativePrompt; }
+    public void setNegativePrompt(String negativePrompt) { this.negativePrompt = negativePrompt; }
     public int getVersionNo() { return versionNo; }
     public void setVersionNo(int versionNo) { this.versionNo = versionNo; }
     public String getState() { return state; }
