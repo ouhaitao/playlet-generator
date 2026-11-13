@@ -127,7 +127,7 @@ public final class WorkflowParameterizer {
             return; // 链接是结构（由开关/Primitive 供给），不是字面量值，不替换
         }
         inputs.put(field, placeholder);
-        subs.add(id + "." + field + " → " + placeholder);
+        subs.add(id + "." + field + " → " + placeholder + " (默认 " + cur.asText() + ")");
     }
 
     /** CLIPTextEncode 正/负向：看输出 0 的消费端槽位。 */

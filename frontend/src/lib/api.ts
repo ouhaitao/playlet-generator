@@ -9,7 +9,19 @@ async function json<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   })
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText} @ ${path}`)
+    // 后端业务错误带 { message }（GlobalExceptionHandler），优先展示中文原因
+    let detail = ''
+    try {
+      const body = (await res.json()) as { message?: string }
+      detail = body.message ? `：${body.message}` : ''
+    } catch {
+      /* 非 JSON 响应体，忽略 */
+    }
+    throw new Error(`${res.status}${detail || ` ${res.statusText}`} @ ${path}`)
+  }
+  // DELETE 等 204 无响应体
+  if (res.status === 204) {
+    return undefined as T
   }
   return (await res.json()) as T
 }
@@ -23,6 +35,7 @@ export const api = {
   },
   shots: {
     list: (projectId: number) => json<Shot[]>(`/projects/${projectId}/shots`),
+    get: (shotId: number) => json<Shot>(`/shots/${shotId}`),
     update: (projectId: number, shotId: number, s: Partial<Shot>) =>
       json<Shot>(`/projects/${projectId}/shots/${shotId}`, {
         method: 'PATCH',
@@ -59,6 +72,12 @@ export const api = {
       }),
   },
   generate: {
+    /** 提交首帧图生成，立即返回 GENERATING 版本（异步）。 */
+    firstFrame: (shotId: number, opts?: { seed?: number; backend?: string }) =>
+      json<ShotVersion>(`/shots/${shotId}/generate-first-frame`, {
+        method: 'POST',
+        body: JSON.stringify(opts ?? {}),
+      }),
     /** 提交视频生成，立即返回 GENERATING 版本（异步）。 */
     video: (shotId: number, seed?: number) =>
       json<ShotVersion>(`/shots/${shotId}/generate-video`, {
@@ -66,4 +85,49 @@ export const api = {
         body: JSON.stringify(seed != null ? { seed } : {}),
       }),
   },
+  workflows: {
+    list: () => json<WorkflowEntry[]>('/workflows'),
+    get: (name: string) => json<WorkflowDetail>(`/workflows/${name}`),
+    /** 导入：content 为 API 格式 JSON 原文（字符串）。ok=false 时 problems 有具体原因。 */
+    import: (name: string, content: string) =>
+      json<WorkflowImportReport>(`/workflows?name=${encodeURIComponent(name)}`, {
+        method: 'POST',
+        body: content,
+      }),
+    remove: (name: string) =>
+      json<void>(`/workflows/${name}`, { method: 'DELETE' }),
+  },
+}
+
+/** 工作流模板库条目。 */
+export interface WorkflowSlotBrief {
+  name: string
+  type: string
+  sourceKind: 'source' | 'chain'
+  hostId: string
+}
+
+export interface WorkflowEntry {
+  name: string
+  source: 'builtin' | 'user'
+  slots: WorkflowSlotBrief[]
+  importedAt: string | null
+  bytes: number
+  overridden: boolean
+}
+
+export interface WorkflowDetail {
+  name: string
+  source: 'builtin' | 'user'
+  slots: WorkflowSlotBrief[]
+  workflow: Record<string, unknown>
+}
+
+export interface WorkflowImportReport {
+  name: string
+  ok: boolean
+  problems: string[]
+  slots: WorkflowSlotBrief[]
+  substitutions: string[]
+  notes: string[]
 }

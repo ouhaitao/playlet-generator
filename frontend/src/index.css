@@ -2,6 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  @apply bg-background text-foreground antialiased;
+/* 设计令牌：亮色默认，.dark 覆盖（useTheme 切换 <html> class）。
+   值为 HSL 三元组，tailwind.config.js 里 hsl(var(--x)) 引用。 */
+@layer base {
+  :root {
+    --background: 210 20% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --secondary: 210 40% 94%;
+    --secondary-foreground: 222 30% 22%;
+    --muted: 210 30% 95%;
+    --muted-foreground: 215 16% 45%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 210 40% 98%;
+    --success: 142 72% 32%;
+    --success-foreground: 0 0% 100%;
+    --warning: 30 92% 42%;
+    --warning-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 25% 88%;
+    --input: 214 25% 82%;
+    --ring: 221 83% 53%;
+    --radius: 6px;
+    --shadow-card: 0 1px 2px rgb(16 24 40 / 0.06);
+    --shadow-pop: 0 4px 14px rgb(16 24 40 / 0.12);
+  }
+
+  .dark {
+    --background: 222 28% 8%;
+    --foreground: 210 30% 92%;
+    --card: 222 28% 11%;
+    --card-foreground: 210 30% 92%;
+    --secondary: 217 24% 18%;
+    --secondary-foreground: 210 30% 88%;
+    --muted: 217 24% 16%;
+    --muted-foreground: 215 14% 62%;
+    --primary: 217 91% 62%;
+    --primary-foreground: 222 47% 8%;
+    --success: 142 66% 46%;
+    --success-foreground: 0 0% 100%;
+    --warning: 36 92% 55%;
+    --warning-foreground: 30 60% 10%;
+    --destructive: 0 72% 56%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 217 24% 20%;
+    --input: 217 24% 26%;
+    --ring: 217 91% 62%;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 0.45);
+    --shadow-pop: 0 4px 16px rgb(0 0 0 / 0.55);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground text-sm;
+    font-family:
+      ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+    font-feature-settings: 'tnum';
+  }
+
+  code,
+  pre,
+  .font-mono {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  ::selection {
+    @apply bg-primary/25;
+  }
+
+  /* 紧凑滚动条 */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 4px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }

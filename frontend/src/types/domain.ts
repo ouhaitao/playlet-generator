@@ -79,6 +79,7 @@ export interface ShotVersion {
   artifactPath?: string
   durationSec?: number
   reviewState: 'PENDING' | 'APPROVED' | 'REJECTED'
+  rejectReason?: string
   regenLevel?: number
   comfyPromptId?: string
   genState: 'GENERATING' | 'DONE' | 'FAILED'

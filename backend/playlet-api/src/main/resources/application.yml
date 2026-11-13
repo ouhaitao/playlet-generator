@@ -45,6 +45,8 @@ playlet:
     base-url: ${PLAYLET_COMFYUI_BASE_URL:http://127.0.0.1:28070}
     # ComfyUI 产物输出根目录（实测在 ComfyUI\output\，多一层目录）
     output-dir: ${PLAYLET_COMFYUI_OUTPUT_DIR:F:/ai/comfyui/ComfyUI_windows_portable/ComfyUI/output}
+    # ComfyUI 输入素材目录（首帧图审核通过后复制到这里，供图生视频 LoadImage 使用）
+    input-dir: ${PLAYLET_COMFYUI_INPUT_DIR:F:/ai/comfyui/ComfyUI_windows_portable/ComfyUI/input}
     # 提交后轮询 history 的间隔与超时
     poll-interval-ms: 1500
     timeout-seconds: 3600
@@ -56,6 +58,8 @@ playlet:
   # 视频后端：v1 仅 MiniMax H3
   generation:
     default-backend: MINIMAX_H3
+    # 首帧图后端：ANIMA（本地有模型）/ ILLUSTRIOUS（待装 checkpoint）
+    default-image-backend: ${PLAYLET_IMAGE_BACKEND:ANIMA}
 
 logging:
   level:

@@ -87,6 +87,12 @@ public class ShotController {
         return versions.findByShot_IdOrderByVersionNoAsc(shotId);
     }
 
+    @GetMapping("/api/shots/{shotId}")
+    public Shot getShot(@PathVariable Long shotId) {
+        return shots.findById(shotId)
+                .orElseThrow(() -> new NotFoundException("shot " + shotId));
+    }
+
     @GetMapping("/api/projects/{projectId}/characters")
     public List<CharacterRef> listCharacters(@PathVariable Long projectId) {
         return characters.findByProject_Id(projectId);

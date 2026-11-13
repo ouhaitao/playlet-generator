@@ -4,11 +4,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -16,22 +20,36 @@ import java.util.Map;
 /**
  * 参数化工作流模板加载器（DESIGN.md §4 ④层）。
  * 模板为 API 格式 JSON，占位符形如 {{name}}，运行时替换为实际值。
- * 模板文件放 classpath:workflows/*.json（从 ComfyUI 导出的 API 格式）。
+ *
+ * <p>查找顺序：存储目录 {@code <playlet.storage.dir>/workflows/<name>.json}（前端导入的模板，
+ * 覆盖同名内置模板）→ classpath:workflows/&lt;name&gt;.json（随包内置模板）。
  */
 @Component
 public class WorkflowTemplateLoader {
 
     private final ObjectMapper json = new ObjectMapper();
+    /** 存储目录下的 workflows 根；null = 仅 classpath（测试用无参构造）。 */
+    private final Path storageWorkflows;
+
+    /** 测试/CLI 用：仅 classpath。 */
+    public WorkflowTemplateLoader() {
+        this.storageWorkflows = null;
+    }
+
+    @Autowired
+    public WorkflowTemplateLoader(@Value("${playlet.storage.dir:./data}") String storageDir) {
+        this.storageWorkflows = storageDir == null ? null : Path.of(storageDir).resolve("workflows");
+    }
+
+    /** 存储目录 workflows 根（可能尚不存在）；null = 未配置。 */
+    public Path storageWorkflowsDir() {
+        return storageWorkflows;
+    }
 
     /** 加载并替换占位符。values 中 value 为 null 的占位符保持原样（调用方应保证必填都有值）。 */
     public JsonNode load(String templateName, Map<String, String> values) {
-        ClassPathResource res = new ClassPathResource("workflows/" + templateName + ".json");
-        if (!res.exists()) {
-            throw new IllegalStateException("workflow template not found: workflows/" + templateName
-                    + ".json —— 请在 ComfyUI 开 Dev Mode → Save (API Format) 导出后放入该目录");
-        }
-        try (InputStream in = res.getInputStream()) {
-            JsonNode root = json.readTree(in);
+        try {
+            JsonNode root = readTree(templateName, ".json");
             substitute(root, values);
             return root;
         } catch (IOException e) {
@@ -41,29 +59,62 @@ public class WorkflowTemplateLoader {
 
     /** 加载原始模板（不做占位符替换），供剪枝器先改写再替换。 */
     public ObjectNode loadRaw(String templateName) {
-        ClassPathResource res = new ClassPathResource("workflows/" + templateName + ".json");
-        if (!res.exists()) {
-            throw new IllegalStateException("workflow template not found: workflows/" + templateName + ".json");
-        }
-        try (InputStream in = res.getInputStream()) {
-            return (ObjectNode) json.readTree(in);
+        try {
+            return (ObjectNode) readTree(templateName, ".json");
         } catch (IOException e) {
             throw new IllegalStateException("failed to read template " + templateName, e);
         }
     }
 
-    /** 读模板的 sidecar 槽位清单（classpath:workflows/<name>.options.json）；不存在返回空。 */
+    /** 读模板的 sidecar 槽位清单；不存在返回空。 */
     public List<WorkflowSlot> loadSlots(String templateName) {
-        ClassPathResource res = new ClassPathResource("workflows/" + templateName + ".options.json");
-        if (!res.exists()) {
-            return List.of();
-        }
-        try (InputStream in = res.getInputStream()) {
-            return json.readValue(in,
+        try {
+            JsonNode sidecar = readTreeOrNull(templateName, ".options.json");
+            if (sidecar == null) {
+                return List.of();
+            }
+            return json.readValue(json.treeAsTokens(sidecar),
                     json.getTypeFactory().constructCollectionType(List.class, WorkflowSlot.class));
         } catch (IOException e) {
             throw new IllegalStateException("failed to read sidecar for " + templateName, e);
         }
+    }
+
+    private JsonNode readTree(String templateName, String suffix) throws IOException {
+        JsonNode node = readTreeOrNull(templateName, suffix);
+        if (node == null) {
+            throw new IllegalStateException("workflow template not found: " + templateName
+                    + " —— 内置模板在 classpath:workflows/，导入模板在 <storage>/workflows/"
+                    + "（ComfyUI 开 Dev Mode → Save (API Format) 导出后经前端「工作流库」导入）");
+        }
+        return node;
+    }
+
+    /** 存储目录优先，classpath 兜底；都没有返回 null。suffix 形如 ".json"/".options.json"。 */
+    private JsonNode readTreeOrNull(String templateName, String suffix) throws IOException {
+        Path fs = resolveStoragePath(templateName, suffix);
+        if (fs != null) {
+            return json.readTree(Files.readString(fs));
+        }
+        ClassPathResource res = new ClassPathResource("workflows/" + templateName + suffix);
+        if (!res.exists()) {
+            return null;
+        }
+        try (InputStream in = res.getInputStream()) {
+            return json.readTree(in);
+        }
+    }
+
+    /** 存储目录下的模板文件路径；不存在或名字越界返回 null。 */
+    public Path resolveStoragePath(String templateName, String suffix) {
+        if (storageWorkflows == null || templateName == null) {
+            return null;
+        }
+        Path p = storageWorkflows.resolve(templateName + suffix).normalize();
+        if (!p.startsWith(storageWorkflows)) {
+            return null; // 防目录穿越
+        }
+        return Files.exists(p) ? p : null;
     }
 
     /** 对已剪枝的工作流做占位符替换（剪枝在前、替换在后）。 */

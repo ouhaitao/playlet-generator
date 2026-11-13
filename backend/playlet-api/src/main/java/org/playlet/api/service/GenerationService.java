@@ -10,12 +10,15 @@ import org.playlet.comfyui.client.ComfyProgressMonitor;
 import org.playlet.domain.entity.Project;
 import org.playlet.domain.entity.Shot;
 import org.playlet.domain.entity.ShotVersion;
+import org.playlet.domain.model.Capability;
+import org.playlet.domain.model.FirstFrameSource;
 import org.playlet.domain.model.ShotState;
 import org.playlet.domain.model.VersionKind;
 import org.playlet.domain.repo.ShotRepository;
 import org.playlet.domain.repo.ShotVersionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 生成入口（主流程 ⑤b 视频生成），**异步非阻塞**。
+ * 生成入口（主流程 ⑤ 首帧图生成 + ⑤b 视频生成），**异步非阻塞**。
  *
  * <p>流程：提交即返回（version.genState=GENERATING）→ 后台线程轮询 history 判定完成
  * （权威）→ 写产物/状态 → WebSocket 广播 completed/failed。ComfyUI /ws 的实时
@@ -34,6 +37,10 @@ import java.util.concurrent.Executors;
  *
  * <p>只接受**已确认**的提示词（Shot.visualPrompt 由确认门写入，见 DESIGN.md §6.3）。
  * 崩溃恢复：启动时把残留 GENERATING 行重新挂回轮询（ComfyUI history 仍在）。
+ *
+ * <p>首帧阶段：图后端由能力声明选出（supports TEXT_TO_IMAGE），默认取配置
+ * {@code playlet.generation.default-image-backend}；产物审核后由 ReviewController
+ * 提升进 ComfyUI input 目录并回填 Shot.firstFrameImage（闸门②）。
  */
 @Service
 public class GenerationService {
@@ -46,6 +53,7 @@ public class GenerationService {
     private final List<GenerationBackend> backends;
     private final ProgressEventPublisher events;
     private final ComfyProgressMonitor monitor;
+    private final String defaultImageBackend;
     private final ExecutorService workers = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "gen-worker");
         t.setDaemon(true);
@@ -54,12 +62,15 @@ public class GenerationService {
 
     public GenerationService(ShotRepository shots, ShotVersionRepository versions,
                              List<GenerationBackend> backends,
-                             ProgressEventPublisher events, ComfyProgressMonitor monitor) {
+                             ProgressEventPublisher events, ComfyProgressMonitor monitor,
+                             @Value("${playlet.generation.default-image-backend:ANIMA}")
+                             String defaultImageBackend) {
         this.shots = shots;
         this.versions = versions;
         this.backends = backends;
         this.events = events;
         this.monitor = monitor;
+        this.defaultImageBackend = defaultImageBackend;
     }
 
     /** 崩溃恢复：残留 GENERATING 的版本重新挂回轮询。DB 不可用时不阻断启动。 */
@@ -101,6 +112,13 @@ public class GenerationService {
             throw new IllegalStateException(
                     "shot " + shotId + " 的 visualPrompt 为空——提示词须经确认门写入后才能生成（§6.3）");
         }
+        // 闸门②前置：REFERENCE 来源的镜头必须先有**审核通过**的首帧图
+        //（approve 时由 ReviewController 提升进 ComfyUI input 并回填 firstFrameImage）
+        if (shot.getFirstFrameSource() == FirstFrameSource.REFERENCE
+                && (shot.getFirstFrameImage() == null || shot.getFirstFrameImage().isBlank())) {
+            throw new IllegalStateException(
+                    "shot " + shotId + " 尚无已审核通过的首帧图——请先生成首帧并通过闸门②（§7 L4：改视频不如改首帧）");
+        }
 
         Long seed = seedOverride;
         GenerationRequest req = GenerationRequest.video(
@@ -129,6 +147,89 @@ public class GenerationService {
         watch(version.getId(), shotId, promptId, backend);
         events.publish(ProgressEvent.started(version.getId(), shotId, promptId));
         return version;
+    }
+
+    /**
+     * 提交首帧图生成（主流程 ⑤），立即返回 GENERATING 版本。
+     * 图后端按能力声明选择（supports TEXT_TO_IMAGE），id 可显式指定（ANIMA/ILLUSTRIOUS）。
+     */
+    @Transactional
+    public ShotVersion generateFirstFrame(Long shotId, Long seedOverride, String backendId) {
+        Shot shot = shots.findById(shotId)
+                .orElseThrow(() -> new IllegalArgumentException("shot not found: " + shotId));
+        Project project = shot.getProject();
+
+        GenerationBackend backend = imageBackend(backendId);
+        if (shot.getVisualPrompt() == null || shot.getVisualPrompt().isBlank()) {
+            throw new IllegalStateException(
+                    "shot " + shotId + " 的 visualPrompt 为空——提示词须经确认门写入后才能生成（§6.3）");
+        }
+        if (shot.getState() == ShotState.FIRST_FRAME_GENERATING
+                || shot.getState() == ShotState.VIDEO_GENERATING) {
+            throw new IllegalStateException("shot " + shotId + " 正在生成中（" + shot.getState() + "），请稍候");
+        }
+
+        int[] wh = resolveImageSize(project);
+        GenerationRequest req = GenerationRequest.image(
+                shot.getVisualPrompt(), wh[0], wh[1], seedOverride);
+        String promptId = backend.submit(req);
+
+        int nextNo = versions.findByShot_IdOrderByVersionNoAsc(shotId).size() + 1;
+        ShotVersion version = new ShotVersion();
+        version.setShot(shot);
+        version.setVersionNo(nextNo);
+        version.setKind(VersionKind.FIRST_FRAME);
+        version.setBackend(backend.id());
+        version.setPrompt(shot.getVisualPrompt());
+        version.setSeed(seedOverride);
+        version.setComfyPromptId(promptId);
+        version.setGenState("GENERATING");
+        version.setReviewState("PENDING");
+        version.setCreatedAt(LocalDateTime.now().format(TS));
+        versions.save(version);
+
+        shot.setState(ShotState.FIRST_FRAME_GENERATING);
+        shots.save(shot);
+
+        watch(version.getId(), shotId, promptId, backend);
+        events.publish(ProgressEvent.started(version.getId(), shotId, promptId));
+        return version;
+    }
+
+    /** 图后端：显式 id 优先；默认配置 id；再兜底 = 第一个支持 TEXT_TO_IMAGE 的后端。 */
+    private GenerationBackend imageBackend(String backendId) {
+        String id = backendId == null || backendId.isBlank() ? defaultImageBackend : backendId.trim();
+        GenerationBackend b = backendFor(id);
+        if (b != null && b.supports(Capability.TEXT_TO_IMAGE)) {
+            return b;
+        }
+        if (b != null) {
+            throw new IllegalArgumentException("后端 " + id + " 不支持文生图（TEXT_TO_IMAGE）");
+        }
+        return backends.stream()
+                .filter(x -> x.supports(Capability.TEXT_TO_IMAGE))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "没有可用的图像后端（配置 playlet.generation.default-image-backend=" + id
+                                + "，且无后端声明 TEXT_TO_IMAGE）"));
+    }
+
+    /**
+     * 首帧图分辨率：项目显式分辨率优先；否则按画幅映射到常见基准。
+     * anima/illustrious 模板 width/height 均为占位符，必须有值。
+     */
+    private int[] resolveImageSize(Project project) {
+        if (project.getResolutionW() != null && project.getResolutionH() != null) {
+            return new int[]{project.getResolutionW(), project.getResolutionH()};
+        }
+        String ratio = project.getAspectRatio() == null ? "9:16" : project.getAspectRatio();
+        return switch (ratio) {
+            case "16:9" -> new int[]{1344, 768};
+            case "1:1" -> new int[]{1024, 1024};
+            case "3:4" -> new int[]{896, 1152};
+            case "4:3" -> new int[]{1152, 896};
+            default -> new int[]{768, 1344}; // 9:16 竖屏短剧
+        };
     }
 
     /** 后台监听某次生成：WS 进度转发 + history 轮询判定完成。 */
@@ -169,10 +270,16 @@ public class GenerationService {
         v.setArtifactPath(result.subfolder() == null || result.subfolder().isEmpty()
                 ? result.filename()
                 : result.subfolder() + "/" + result.filename());
+        if (result.durationSec() != null) {
+            v.setDurationSec(result.durationSec());
+        }
         versions.save(v);
 
         Shot shot = v.getShot();
-        shot.setState(ShotState.VIDEO_REVIEW);
+        // 闸门②/③：产物就绪 → 进入对应待审状态（首帧图审核通过后才回填 firstFrameImage）
+        shot.setState(v.getKind() == VersionKind.FIRST_FRAME
+                ? ShotState.FIRST_FRAME_REVIEW
+                : ShotState.VIDEO_REVIEW);
         shots.save(shot);
 
         events.publish(ProgressEvent.completed(versionId, shot.getId(), v.getComfyPromptId(),
@@ -190,7 +297,11 @@ public class GenerationService {
         versions.save(v);
 
         Shot shot = v.getShot();
-        shot.setState(ShotState.PENDING);
+        // 回退到可重试状态：已有通过审核的首帧图 → 停在首帧待审（可直接重发视频）；
+        // 否则 → PENDING（可重发首帧）
+        shot.setState(shot.getFirstFrameImage() != null && !shot.getFirstFrameImage().isBlank()
+                ? ShotState.FIRST_FRAME_REVIEW
+                : ShotState.PENDING);
         shots.save(shot);
 
         events.publish(ProgressEvent.failed(versionId, shot.getId(), v.getComfyPromptId(), message));

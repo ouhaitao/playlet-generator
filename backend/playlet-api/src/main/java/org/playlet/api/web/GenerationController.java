@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
-/** 生成触发 REST API。 */
+/** 生成触发 REST API（首帧图 + 视频）。 */
 @RestController
 @RequestMapping("/api")
 public class GenerationController {
@@ -21,7 +21,22 @@ public class GenerationController {
         this.generation = generation;
     }
 
-    /** 触发镜头视频生成（M1 同步阻塞；进度推送后续接 WebSocket）。 */
+    /** 触发镜头首帧图生成（异步，立即返回 GENERATING 版本）。body 可选：seed、backend。 */
+    @PostMapping("/shots/{shotId}/generate-first-frame")
+    public ShotVersion generateFirstFrame(@PathVariable Long shotId,
+                                          @RequestBody(required = false) Map<String, Object> body) {
+        Long seed = null;
+        String backend = null;
+        if (body != null && body.get("seed") != null) {
+            seed = Long.valueOf(String.valueOf(body.get("seed")));
+        }
+        if (body != null && body.get("backend") != null) {
+            backend = String.valueOf(body.get("backend"));
+        }
+        return generation.generateFirstFrame(shotId, seed, backend);
+    }
+
+    /** 触发镜头视频生成（异步，立即返回 GENERATING 版本）。body 可选：seed。 */
     @PostMapping("/shots/{shotId}/generate-video")
     public ShotVersion generateVideo(@PathVariable Long shotId,
                                      @RequestBody(required = false) Map<String, Object> body) {

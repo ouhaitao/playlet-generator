@@ -79,9 +79,11 @@ public abstract class SdImageBackend implements GenerationBackend {
         Map<String, Object> extra = req.extraParams() == null ? Map.of() : req.extraParams();
         Object loraName = extra.get("lora_name");
 
+        // 参数化模板中的每个占位符都必须有值（loader 对缺值占位符保持原样，
+        // 原样提交会被 ComfyUI 的 INT/FLOAT 转换拒绝），故此处全部兜底默认。
         Map<String, String> values = new HashMap<>();
         values.put("prompt", req.prompt());
-        if (extra.get("negative") != null) values.put("negative", String.valueOf(extra.get("negative")));
+        values.put("negative", extra.get("negative") != null ? String.valueOf(extra.get("negative")) : "");
         values.put("prefix", "image/" + id().toLowerCase());
         values.put("img2img", String.valueOf(req.firstFrameImage() != null));
         values.put("swap", "false");
@@ -89,22 +91,37 @@ public abstract class SdImageBackend implements GenerationBackend {
             values.put("lora", String.valueOf(loraName != null));
             if (loraName != null) {
                 values.put("lora_name", String.valueOf(loraName));
-            }
-            if (extra.get("lora_strength") != null) {
-                values.put("lora_strength", String.valueOf(extra.get("lora_strength")));
+                values.put("lora_strength",
+                        extra.get("lora_strength") != null ? String.valueOf(extra.get("lora_strength")) : "1.0");
+                values.put("lora_strength_clip",
+                        extra.get("lora_strength_clip") != null ? String.valueOf(extra.get("lora_strength_clip")) : "1.0");
             }
         }
-        if (req.width() != null) values.put("width", String.valueOf(req.width()));
-        if (req.height() != null) values.put("height", String.valueOf(req.height()));
-        if (req.seed() != null) values.put("seed", String.valueOf(req.seed()));
-        if (extra.get("steps") != null) values.put("steps", String.valueOf(extra.get("steps")));
-        if (extra.get("cfg") != null) values.put("cfg", String.valueOf(extra.get("cfg")));
+        values.put("width", String.valueOf(req.width() != null ? req.width() : defaultWidth()));
+        values.put("height", String.valueOf(req.height() != null ? req.height() : defaultHeight()));
+        values.put("seed", String.valueOf(req.seed() != null ? req.seed() : randomSeed()));
+        values.put("steps", extra.get("steps") != null ? String.valueOf(extra.get("steps")) : "20");
+        values.put("cfg", extra.get("cfg") != null ? String.valueOf(extra.get("cfg")) : "8.0");
         if (req.firstFrameImage() != null) values.put("first_frame", req.firstFrameImage());
 
         ObjectNode wf = templates.loadRaw(template());
         templates.substitute(wf, values);
         WorkflowPruner.foldConstantSwitches(wf, types);
         return comfy.submit(wf);
+    }
+
+    /** 默认输出宽（9:16 竖屏基准，与 GenerationService.resolveImageSize 一致）。 */
+    protected int defaultWidth() {
+        return 768;
+    }
+
+    /** 默认输出高。 */
+    protected int defaultHeight() {
+        return 1344;
+    }
+
+    private static long randomSeed() {
+        return Math.abs(new java.util.Random().nextLong() % 1_000_000_000_000L);
     }
 
     @Override
