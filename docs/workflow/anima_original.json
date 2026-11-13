@@ -1,0 +1,276 @@
+{
+  "3": {
+    "inputs": {
+      "seed": 320019746828897,
+      "steps": 20,
+      "cfg": 5,
+      "sampler_name": "er_sde",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "31",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "23",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "6": {
+    "inputs": {
+      "text": "masterpiece, best quality, score_7, score_8, score_9,\nA beautiful anime girl with short pink bob-length hair adorned with a silver star-shaped hairpin and large expressive magenta-purple eyes looking upward through streaming tears, expression showing intense pain and reluctance. Viewed from the first-person perspective of a nine-year-old boy standing over her, looking down at the girl kneeling on a plush pastel-colored bedspread in a dimly lit bedroom. Her body leans forward with back arched, her white corset bodice completely undone, both large, heavy bare breasts fully exposed with prominent pink nipples, asymmetrical puffy lavender sleeves hanging off her bare shoulders. Her short feather skirt is pushed up around her waist, bare thighs and knees pressing against the bedspread, sheer white thigh-high stockings pushed down to mid-thigh with dangling white garter straps. Her face is lowered close to the viewer's groin, her mouth wrapped around the thick shaft of an erect penis, her tongue actively licking and swirling around the sensitive glans and head, one hand gently gripping the base while the other supports herself on the bed, strands of saliva stretching between her stretched lips and the pink penis head. A small stream of white semen drips from the corner of her mouth onto her flushed cheek. The pale testicles hang just above her mouth in the foreground of the frame, glistening with saliva. The lower shaft of the penis extends downward into view, covered in wet saliva and a drop of semen at the tip. Warm golden window light casts soft highlights across her glistening skin,light pastel curtains in the background slightly out of focus. Anime illustration style, cel-shaded, vibrant saturated colors, highly detailed anatomy, masterpieces, best quality, 4k resolution, (nsfw:1.4), (penis licking:1.4), (tongue on shaft:1.4), (first person POV:1.4), (bare breasts:1.3), (painful expression:1.4), (tears streaming:1.3), (saliva strands:1.2), (semen dripping:1.2), (young boy with large penis:1.3), solo, 3:4 aspect ratio.",
+      "clip": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码（正面）"
+    }
+  },
+  "7": {
+    "inputs": {
+      "text": "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia, artist name,censored, mosaic, bar censor, pixelated, blurry censor, \nbad anatomy, bad proportions, deformed, disfigured, mutated, malformed, \nextra limbs, extra arms, extra legs, extra fingers, extra penises,extra head,missing arms, missing legs, \npoorly drawn, ugly, gross, horrific, scary",
+      "clip": [
+        "11",
+        0
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP文本编码（负面）"
+    }
+  },
+  "8": {
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "9": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "8",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "保存图像"
+    }
+  },
+  "11": {
+    "inputs": {
+      "clip_name": "qwen_3_06b_base.safetensors",
+      "type": "stable_diffusion",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "加载CLIP"
+    }
+  },
+  "12": {
+    "inputs": {
+      "unet_name": "anima-base-v1.0.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "UNet加载器"
+    }
+  },
+  "18": {
+    "inputs": {
+      "vae_name": "qwen_image_vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "22": {
+    "inputs": {
+      "image": "6A34DD5A77412AACB0A022C7A2E4085F.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "加载图像",
+      "cnr_id": "comfy-core",
+      "ver": "0.21.0"
+    }
+  },
+  "23": {
+    "inputs": {
+      "switch": false,
+      "on_false": [
+        "32",
+        0
+      ],
+      "on_true": [
+        "24",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "图生图"
+    }
+  },
+  "24": {
+    "inputs": {
+      "pixels": [
+        "22",
+        0
+      ],
+      "vae": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE编码"
+    }
+  },
+  "30": {
+    "inputs": {
+      "lora_name": "rimixao5050.safetensors",
+      "strength_model": 1,
+      "model": [
+        "12",
+        0
+      ]
+    },
+    "class_type": "LoraLoaderModelOnly",
+    "_meta": {
+      "title": "LoRA加载器（仅模型）"
+    }
+  },
+  "31": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "12",
+        0
+      ],
+      "on_true": [
+        "30",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "是否使用LORA"
+    }
+  },
+  "32": {
+    "inputs": {
+      "width": [
+        "36",
+        0
+      ],
+      "height": [
+        "37",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "34": {
+    "inputs": {
+      "value": 1792
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "长边"
+    }
+  },
+  "35": {
+    "inputs": {
+      "value": 1344
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "短边"
+    }
+  },
+  "36": {
+    "inputs": {
+      "switch": [
+        "38",
+        0
+      ],
+      "on_false": [
+        "35",
+        0
+      ],
+      "on_true": [
+        "34",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "宽"
+    }
+  },
+  "37": {
+    "inputs": {
+      "switch": [
+        "38",
+        0
+      ],
+      "on_false": [
+        "34",
+        0
+      ],
+      "on_true": [
+        "35",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "长"
+    }
+  },
+  "38": {
+    "inputs": {
+      "value": true
+    },
+    "class_type": "PrimitiveBoolean",
+    "_meta": {
+      "title": "是否为横图"
+    }
+  }
+}
