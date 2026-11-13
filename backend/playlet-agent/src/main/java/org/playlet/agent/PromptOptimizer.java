@@ -83,6 +83,29 @@ public class PromptOptimizer {
         return saveDraft("SHOT", shot.getId(), "visual_prompt", base, out.prompt(), out.negative());
     }
 
+    /**
+     * 用户手改的提示词文本直接成为新草稿（§6.3：逐条修改的结果同样先成为草稿、再确认，
+     * 不擅自过 LLM 重优化——用户改的文字就是用户想要的）。负向提示沿用上一版草稿，无则默认。
+     *
+     * @param shot    目标镜头（槽位现值作为 baseContent 留档）
+     * @param content 用户修改后的提示词文本（非空）
+     * @return 新草稿（DRAFT）
+     */
+    @Transactional
+    public PromptDraft manualShotDraft(Shot shot, String content) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("修改后的提示词不能为空");
+        }
+        String negative = drafts
+                .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
+                        "SHOT", shot.getId(), "visual_prompt")
+                .map(PromptDraft::getNegativePrompt)
+                .filter(s -> s != null && !s.isBlank())
+                .orElse(DEFAULT_NEGATIVE);
+        return saveDraft("SHOT", shot.getId(), "visual_prompt",
+                shot.getVisualPrompt(), content.trim(), negative);
+    }
+
     /** 优化角色外貌描述（参考图生成前确认）。 */
     @Transactional
     public PromptDraft optimizeCharacterAppearance(CharacterRef character, Project project, String feedback) {

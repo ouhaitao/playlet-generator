@@ -41,3 +41,5 @@ frontend/.vite/
 
 ### Mac OS ###
 .DS_Store
+/frontend/tsconfig.app.tsbuildinfo
+/frontend/tsconfig.node.tsbuildinfo

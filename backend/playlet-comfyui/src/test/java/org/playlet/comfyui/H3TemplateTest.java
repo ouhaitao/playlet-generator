@@ -60,6 +60,6 @@ class H3TemplateTest {
     @Test
     void durationSnap() {
         // 5s → 125 帧? 网格 17k+5: k=7 → 124 帧 ≈ 5.1667s
-        assertEquals((17 * 7 + 5) / 24.0, MiniMaxH3Backend.snapDuration(5.0), 1e-9);
+        assertEquals((17 * 7 + 5) / 24.0, MiniMaxH3Backend.snapToFrameGrid(5.0), 1e-9);
     }
 }

@@ -99,3 +99,39 @@ export interface PromptDraft {
   feedback?: string
   confirmedAt?: string
 }
+
+/** 闸门①分镜表一行（后端 StoryboardService.Row）：镜头字段 + 最新草稿状态。 */
+export interface StoryboardRow {
+  shotId: number
+  ord: number
+  durationSec: number
+  shotSize: string
+  cameraMove: string
+  dialogue?: string | null
+  speaker?: string | null
+  scene?: string | null
+  firstFrameSource?: FirstFrameSource | null
+  shotState?: ShotState | null
+  visualPrompt?: string | null
+  negativePrompt?: string | null
+  draftId?: number | null
+  draftVersion: number
+  draftState?: DraftState | null
+  draftContent?: string | null
+  draftNegative?: string | null
+  confirmed: boolean
+}
+
+/** 切镜结果：整表 + 是否走 LLM（false = 回退切句，建议逐镜润色）。 */
+export interface StoryboardGenerateResult {
+  rows: StoryboardRow[]
+  usedLlm: boolean
+  shotCount: number
+}
+
+/** 批量确认结果。 */
+export interface StoryboardConfirmResult {
+  confirmedNow: number
+  stillPending: number
+  projectState: string
+}

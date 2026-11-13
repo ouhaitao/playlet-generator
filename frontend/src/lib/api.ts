@@ -1,4 +1,5 @@
-import type { Project, Shot, ShotVersion, PromptDraft, CharacterRef, Scene } from '@/types/domain'
+import type { Project, Shot, ShotVersion, PromptDraft, CharacterRef, Scene,
+  StoryboardRow, StoryboardGenerateResult, StoryboardConfirmResult } from '@/types/domain'
 
 /** 后端 REST 客户端。开发期经 Vite proxy 转发到 :8080。 */
 const BASE = '/api'
@@ -54,12 +55,39 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ ownerType, ownerId, fieldName, feedback }),
       }),
+    /** 用户手改文本直接成新草稿（闸门①逐行改，不擅自重优化）。 */
+    manual: (shotId: number, content: string) =>
+      json<PromptDraft>(`/drafts/manual`, {
+        method: 'POST',
+        body: JSON.stringify({ shotId, content }),
+      }),
     confirm: (draftId: number) =>
       json<PromptDraft>(`/drafts/${draftId}/confirm`, { method: 'POST' }),
     reject: (draftId: number, feedback: string) =>
       json<PromptDraft>(`/drafts/${draftId}/reject`, {
         method: 'POST',
         body: JSON.stringify({ feedback }),
+      }),
+  },
+  storyboard: {
+    /** 梗概 → 切镜 → 逐镜出草稿 → 整表返回。 */
+    generate: (projectId: number) =>
+      json<StoryboardGenerateResult>(`/projects/${projectId}/storyboard/generate`, {
+        method: 'POST',
+      }),
+    /** 分镜表整表（序/时长/景别/运镜/草稿状态）。 */
+    table: (projectId: number) =>
+      json<StoryboardRow[]>(`/projects/${projectId}/storyboard/table`),
+    /** 闸门①批量确认：逐镜确认最新草稿；全确认后项目状态推进。 */
+    confirmAll: (projectId: number) =>
+      json<StoryboardConfirmResult>(`/projects/${projectId}/storyboard/confirm-all`, {
+        method: 'POST',
+      }),
+    /** 逐行改提示词：修改结果成为新草稿（再确认才写槽）。 */
+    editPrompt: (projectId: number, shotId: number, content: string) =>
+      json<StoryboardRow>(`/projects/${projectId}/storyboard/shots/${shotId}/prompt`, {
+        method: 'POST',
+        body: JSON.stringify({ content }),
       }),
   },
   characters: {

@@ -81,13 +81,18 @@ public class MiniMaxH3Backend implements GenerationBackend {
     }
 
     @Override
+    public double snapDuration(double seconds) {
+        return snapToFrameGrid(seconds);
+    }
+
+    @Override
     public void validate(GenerationRequest req) {
         if ("VIDEO".equals(req.kind()) && req.firstFrameImage() == null) {
             throw new IllegalArgumentException(
                     "MINIMAX_H3 当前仅支持图生视频：firstFrameImage 必填（模板 " + TEMPLATE_I2V + "）");
         }
         if (req.durationSec() != null) {
-            double snapped = snapDuration(req.durationSec());
+            double snapped = snapToFrameGrid(req.durationSec());
             if (Math.abs(snapped - req.durationSec()) > 0.75) {
                 throw new IllegalArgumentException(
                         "duration " + req.durationSec() + "s 距最近网格点 " + snapped + "s 过远（"
@@ -169,8 +174,8 @@ public class MiniMaxH3Backend implements GenerationBackend {
         return Math.abs(new java.util.Random().nextLong() % 1_000_000_000_000L);
     }
 
-    /** 对齐 17k+5 帧网格（秒）。供 UI/校验参考；模板内表达式也会再对齐一次。 */
-    public static double snapDuration(double seconds) {
+    /** 对齐 17k+5 帧网格（秒）。供 UI/校验/切镜参考；模板内表达式也会再对齐一次。 */
+    public static double snapToFrameGrid(double seconds) {
         double frames = seconds * FPS;
         long k = Math.round((frames - 5) / 17.0);
         if (k < 0) k = 0;

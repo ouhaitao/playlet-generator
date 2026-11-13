@@ -37,6 +37,14 @@ public interface GenerationBackend {
     }
 
     /**
+     * 把目标时长对齐到本后端的帧网格（如 H3 的 17k+5 帧 @24fps → 5s 变 5.167s）。
+     * 无约束的后端原样返回。切镜服务用它保证产出的每镜时长可直接提交生成。
+     */
+    default double snapDuration(double seconds) {
+        return seconds;
+    }
+
+    /**
      * 提交前校验抽象请求（时长对齐、能力匹配、非法组合等）。
      * 不通过抛 {@link IllegalArgumentException}，带明确错误信息。
      */
