@@ -81,12 +81,20 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
           <CardTitle className="flex items-center gap-2">
             <Clapperboard size={14} /> ① 分镜表（闸门①）
             {projectState && (
-              <Badge tone={projectState === 'STORYBOARD_CONFIRMED' ? 'success' : 'warning'}>
+              <Badge
+                tone={
+                  projectState === 'STORYBOARD_CONFIRMED' || projectState === 'COMPOSED'
+                    ? 'success'
+                    : 'warning'
+                }
+              >
                 {projectState === 'STORYBOARD_CONFIRMED'
                   ? '分镜已定稿'
-                  : projectState === 'STORYBOARD'
-                    ? '待确认'
-                    : projectState}
+                  : projectState === 'COMPOSED'
+                    ? '已成片'
+                    : projectState === 'STORYBOARD'
+                      ? '待确认'
+                      : projectState}
               </Badge>
             )}
           </CardTitle>

@@ -1,5 +1,5 @@
 import type { Project, Shot, ShotVersion, PromptDraft, CharacterRef, Scene,
-  StoryboardRow, StoryboardGenerateResult, StoryboardConfirmResult } from '@/types/domain'
+  StoryboardRow, StoryboardGenerateResult, StoryboardConfirmResult, ComposeResult } from '@/types/domain'
 
 /** 后端 REST 客户端。开发期经 Vite proxy 转发到 :8080。 */
 const BASE = '/api'
@@ -33,6 +33,9 @@ export const api = {
     get: (id: number) => json<Project>(`/projects/${id}`),
     create: (p: Partial<Project>) =>
       json<Project>('/projects', { method: 'POST', body: JSON.stringify(p) }),
+    /** 一键合成成片（异步）：校验通过即返回 COMPOSING，进度走 WS compose_* 事件。 */
+    compose: (id: number) =>
+      json<ComposeResult>(`/projects/${id}/compose`, { method: 'POST' }),
   },
   shots: {
     list: (projectId: number) => json<Shot[]>(`/projects/${projectId}/shots`),

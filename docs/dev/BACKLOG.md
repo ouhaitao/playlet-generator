@@ -1,6 +1,6 @@
 # 短剧生成平台 —— 待办与交接清单
 
-更新：2026-11-13 17:45（Asia/Shanghai）
+更新：2026-11-14 18:50（Asia/Shanghai）
 定位：**执行级清单**——还剩什么、从哪入手、怎样算完成。设计依据见 `DESIGN.md`，构建/运行坑见 `BUILDING.md`，本文件不重复二者内容，只做索引与增量。
 
 ---
@@ -11,12 +11,9 @@
 
 **会话策略**：danger-full-access；**永远不要**传 `sandbox_permissions`/`justification`（会报 invalid escalation）。
 
-**当前运行时（写本文件时）**：无后台进程（上一轮冒烟验证完已收尾）。恢复会话后先 `Get-NetTCPConnection -LocalPort 8080/5173` 确认，死了就按上面命令重起。
+**当前运行时（写本文件时）**：5173 vite dev 在跑；8080 后端已停（②冒烟用的临时实例已收尾，`application-local.yml` 被改成 UNC ComfyUI 路径 `\\192.168.5.201\...`，重启前自行确认 base-dir 指向）。恢复会话后先 `Get-NetTCPConnection -LocalPort 8080/5173` 确认，死了就按上面命令重起。
 
-**库内冒烟数据**（`\gitExclude\playlet-data\playlet.db`）：
-- project 3 / shot 3 = 全链样例（v4 首帧 APPROVED → v5 视频 APPROVED，shot=APPROVED）；shot 4 = §6.3 门样例（draft v1 CONFIRMED 已写槽、v2 REJECTED 带意见）。
-- **project 4 = 闸门①样例（2026-11-13 新增）**：3 镜（切句回退、时长已对齐 H3 网格 5.167s）、shot 5 走过「逐行改→v2 草稿→批量确认写槽」，项目 state=STORYBOARD_CONFIRMED。
-- projects 1/2 是早期脏数据（shot 1/2 有遗留 `firstFrameImage=example.png`），可删。
+**库内冒烟数据**：主库（`gitExclude\playlet-data\playlet.db`）**已空**（旧冒烟数据 project 3/4 已丢失，只剩 schema）。②合成冒烟数据用独立临时库验证后已删。可复用素材：`C:\software\dev\ComfyUI\ComfyUI_windows_portable\ComfyUI\output\video\shot_{1,2}_v1.mp4`（320×240、5.167s、带 AAC 音轨，lavfi 造的假 H3 产物）；重建冒烟项目的方法见 §1「②合成」行。
 
 ---
 
@@ -30,42 +27,39 @@
 | 闸门③视频审核 → APPROVED；/media 静态服务 | ✅ | E2E + HEAD 200 |
 | §6.3 确认门后端：PromptOptimizer（LLM+回退）/ DraftController（optimize/confirm/reject）/ V4 negative 列 / extraParams.negative 进生成链 | ✅ | 8 离线测试 + 真实全链冒烟（门拦截/写槽/重优化/驳回/重复 confirm 400） |
 | **①分镜表自动生成 + 闸门①批量确认页**：StoryboardPlanner（LLM 镜头数组 JSON + 回退切句）→ StoryboardService（落 Shot 行、时长 snapDuration 对齐 H3 网格、firstFrameSource 按 mode 推导、逐镜自动出草稿）→ `/api/projects/{id}/storyboard/{generate,table,confirm-all,shots/{sid}/prompt}` → 前端 StoryboardConfirm 页（整表+批量确认+逐行改）+ ProjectDetail ①/② 视图切换；DraftController 事务逻辑抽成 DraftGateService 共用；全确认后 Project.state=STORYBOARD_CONFIRMED，逐行改回退 STORYBOARD | ✅ | 25 新离线测试（StoryboardPlannerTest 13 + StoryboardServiceTest 12）+ 真实冒烟（project 4：建项目→切镜 3 镜→逐行改 v2→批量确认→槽位/negative 落库→状态推进→幂等复确认） |
-| 设计地基：令牌（亮默认+暗可切）+ ui 原语 7 件 + AppShell + 四页面组件化 + DraftGate 逐镜门 UI | 🔶 | tsc+vite 绿、dev server 已验证 CSS；**浏览器实点未做**（StoryboardConfirm 页同样未实点） |
+| **②合成 E2E + 入口**：FfmpegRunner 增强（ffmpeg `time=` 进度解析回调 + probeDuration/probeVideoSize/probeHasAudio；**修两个既有缺陷**：ffprobePath 误替换目录名、probe 只读首行）→ ComposeService（concat 先 `-c copy` 失败回退滤镜重编码、无音轨/静音分片处理、amix 三层混音、阶段进度回调）→ SubtitleBuilder（按分片**真实时长**累加生成 SRT，跳过无台词镜）→ ProjectComposeService（异步编排：校验多镜全 APPROVED + 产物存在 → 收集 ComfyUI output 产物 → SRT/BGM → compose → 落 Project.finalVideoPath/composedAt/composeError + **状态推进 COMPOSED**）→ `POST /api/projects/{id}/compose` + ProgressEvent compose_* 事件复用 WS → V5 迁移 → 前端 ComposePanel（门控按钮/阶段进度条/成片播放器/下载）+ ProjectDetail ③入口；**状态机衔接**：confirmAll 不回退 COMPOSED、editPrompt 从 COMPOSED 回退 STORYBOARD | ✅ | media 12 测试（含 3 个**真实 ffmpeg E2E**：concat+烧字幕、静音分片、BGM 混音，`@EnabledIf` 无 ffmpeg 时跳过）+ api 11 测试（ProjectComposeService 校验门/异步编排/并发拒绝 + Storyboard 2 个 COMPOSED 衔接）+ 完整栈冒烟（POST compose → 真实 ffmpeg → 成片 320×240 h264+aac 10.375s、SRT 按 5.167s/镜累加中文正确 → `/media/store` HEAD 200 → 未过审项目 400 门拦截） |
+| 设计地基：令牌（亮默认+暗可切）+ ui 原语 7 件 + AppShell + 四页面组件化 + DraftGate 逐镜门 UI | 🔶 | tsc+vite 绿、dev server 已验证 CSS；**浏览器实点未做**（StoryboardConfirm/ComposePanel 页同样未实点） |
 
-测试基线：后端 **59**（comfyui 26 + agent 21 + api 12）全绿；前端 build 绿。
+测试基线：后端 **82**（comfyui 26 + media 12 + agent 21 + api 23）全绿；前端 build 绿。
 
 ---
 
 ## 2. 待办（建议顺序，含完成标准）
 
-### ② 合成 E2E + 入口
-- ComposeService/FfmpegRunner **真实素材端到端未测**：先拿 shot 3 的 v5 mp4 手工跑 concat 验证可播；再接 `POST /api/projects/{id}/compose`（进度复用 WS 事件）。
-- 前端：项目详情页"合成成片"按钮 + 成片播放器。
-- 完成标准：多镜全 APPROVED 项目一键出可播成片文件。
-
-### ③ 对话式建项目（§6.2 前半）
+### ② 对话式建项目（§6.2 前半）
 - 后端（playlet-agent）：填槽状态机编排（缺必填槽→针对性提问；LLM 写回；**一次性展示完整简报供改**）+ REST `/api/agent/...`。
 - 前端：对话页 + 简报表单。
 - **前置：用户配 LLM 三变量**；未配时只做回退表单（直接填简报建项目）。
 - 完成标准：≤3 轮对话产出 project + 空 shots 骨架（有 LLM 时）。
 
-### ④ 角色/场景管理页 + 参考图链
+### ③ 角色/场景管理页 + 参考图链
 - UI：角色/场景增改、绑定音色；参考图三来源（库/上传/ComfyUI 生成）+ 审核（appearance/description 的草稿能力已备）。
 - referenceImages 注入：H3/SD 后端消费 GenerationRequest.referenceImages（一致性锚点）。
 - 完成标准：角色参考图生成→审核→注入该角色出场镜头的生成请求。
 
-### ⑤ 音频三层：dialogue TTS + bgm（可放 M1.5）
+### ④ 音频三层：dialogue TTS + bgm（可放 M1.5）
 - TTS 后端（ComfyUI TTS-Audio-Suite，音色库查询见 dsh-comfyui-workflows skill）+ TTS_GENERATING/TTS_REVIEW 状态接线 + 审核 UI。
 - bgm 素材库上传 + 混音 + 字幕烧录。
+- **合成侧钩子已备（②完成时留）**：ProjectComposeService 的 dialogue 参数当前恒传 null（TTS 未接）；BGM 已通（Project.audioBgm+bgmAssetPath → compose 混音，冒烟未覆盖 BGM 路径，media E2E 有）。接 TTS 时把逐镜台词音频传进 compose 的 dialogueFiles 即可。
 
-### ⑥ 审核循环补全（§7）
+### ⑤ 审核循环补全（§7）
 - L4 回退改分镜：version reject regenLevel=L4 → shot ROLLED_BACK → 允许改提示词/时长 → 重进门；API + UI 均缺。
 - 版本对比页（并排/滑块）。
 
-### ⑦ 视觉精修（7 项契约，清单在 DESIGN.md §3 前端节）
+### ⑥ 视觉精修（7 项契约，清单在 DESIGN.md §3 前端节）
 - 时机：M1 闭环后；顺带产开源 README 截图。目标级别"干净的专业工具"，不做营销式华丽。
 
-### ⑧ 开源准备
+### ⑦ 开源准备
 - README（快速开始/配置变量表/架构/截图）、LICENSE（用户定）。
 - 决定 DESIGN.md/BUILDING.md 是否出 gitExclude（建议 DESIGN 进 docs/ 开源，BUILDING 留内部或脱敏）。
 - 清理前端残留依赖 zustand / class-variance-authority（未使用）。
@@ -76,7 +70,8 @@
 
 - illustrious 真生成：缺 `waiIllustriousSDXL` checkpoint。
 - LoRA-on 路径：本机无 LoRA 文件（fail-loud 是设计行为）。
-- LLM 未配置：agent 全部走回退；①（切镜 LLM 路径）③ 的真效果需真模型验证。
+- LLM 未配置：agent 全部走回退；①（切镜 LLM 路径）②（对话建项目）的真效果需真模型验证。
+- **本机 ComfyUI 不可达（2026-11-14 侦察）**：`application-local.yml` 的 base-dir 已被改成 UNC `\\192.168.5.201\ComfyUI_windows_portable`（远程机）；旧的 `C:/software/dev/ComfyUI/...` 与 `F:/ai/comfyui/...` 都不存在。真实生成链（首帧/视频）冒烟需远程 ComfyUI 在线；②合成冒烟是本地 lavfi 假产物 + 命令行覆盖 output-dir 跑的，未依赖 ComfyUI 服务。
 - 用户网络偶断：重试即可。
 
 ---
@@ -84,8 +79,8 @@
 ## 4. M1 闭环验收清单
 
 - [x] 梗概 → 切镜表 → 闸门①批量确认（2026-11-13，回退切句路径；LLM 路径待真模型）
-- [ ] 每镜 ⓪提示词门 → ②首帧 → ③视频 全 APPROVED
-- [ ] 一键合成可播成片
+- [ ] 每镜 ⓪提示词门 → ②首帧 → ③视频 全 APPROVED（真实生成链，阻塞于 ComfyUI/模型环境，见 §3）
+- [x] 一键合成可播成片（2026-11-14，②完成；真实 ffmpeg + 完整栈冒烟，APPROVED 门/成片可播/WS 进度/静态服务均验证。冒烟用 lavfi 假 H3 产物喂 APPROVED 版本，真实 H3 产物合成待上项打通后复验）
 - [ ] （有 LLM 时）对话建项目 ≤3 轮出表
-- [ ] 浏览器实点全部页面（含 DraftGate/审核台/StoryboardConfirm 新 UI）
+- [ ] 浏览器实点全部页面（含 DraftGate/审核台/StoryboardConfirm/ComposePanel 新 UI）
 - [ ] README + LICENSE，干净机器可 clone 跑通

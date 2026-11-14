@@ -352,6 +352,32 @@ class StoryboardServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // ── COMPOSED 状态衔接（②合成完成后项目状态推进）──────────
+
+    @Test
+    void confirmAll_onComposedProject_keepsComposedState() {
+        service.generate(1L);
+        service.confirmAll(1L);
+        project.setState(ProjectComposeService.STATE_PROJECT_COMPOSED);
+
+        StoryboardService.ConfirmResult again = service.confirmAll(1L);
+        assertThat(again.stillPending()).isZero();
+        // 重复批量确认不把已成片项目回退成 STORYBOARD_CONFIRMED
+        assertThat(again.projectState()).isEqualTo(ProjectComposeService.STATE_PROJECT_COMPOSED);
+        assertThat(project.getState()).isEqualTo(ProjectComposeService.STATE_PROJECT_COMPOSED);
+    }
+
+    @Test
+    void editPrompt_onComposedProject_rollsBackToStoryboard() {
+        service.generate(1L);
+        service.confirmAll(1L);
+        project.setState(ProjectComposeService.STATE_PROJECT_COMPOSED);
+
+        // 改分镜 → 成片与新分镜不一致 → 回退待确认
+        service.editPrompt(1L, shots.byProject(1L).get(0).getId(), "改后的画面描述");
+        assertThat(project.getState()).isEqualTo(StoryboardService.STATE_STORYBOARD);
+    }
+
     // ── 整表查询 ─────────────────────────────────────────
 
     @Test

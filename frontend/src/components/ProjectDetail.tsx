@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Clapperboard, MonitorPlay } from 'lucide-react'
+import { ArrowLeft, Clapperboard, Film, MonitorPlay } from 'lucide-react'
 import { api } from '@/lib/api'
 import ReviewPanel from '@/components/ReviewPanel'
 import StoryboardConfirm from '@/components/StoryboardConfirm'
+import ComposePanel from '@/components/ComposePanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -46,6 +47,7 @@ export default function ProjectDetail({
   const { data: project } = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => api.projects.get(projectId),
+    refetchInterval: 5000, // 兜底轮询（合成完成时 WS 断开也能刷新成片路径）
   })
   const { data: shots, isLoading } = useQuery({
     queryKey: ['shots', projectId],
@@ -54,7 +56,7 @@ export default function ProjectDetail({
   })
   const [selected, setSelected] = useState<number | null>(null)
   // 无分镜时默认落在分镜表页（切镜入口）；有分镜后默认审核台
-  const [view, setView] = useState<'storyboard' | 'review'>('storyboard')
+  const [view, setView] = useState<'storyboard' | 'review' | 'compose'>('storyboard')
 
   const shotCount = (shots ?? []).length
 
@@ -79,6 +81,13 @@ export default function ProjectDetail({
           >
             <MonitorPlay size={13} /> ② 审核台
           </Button>
+          <Button
+            variant={view === 'compose' ? 'primary' : 'outline'}
+            size="xs"
+            onClick={() => setView('compose')}
+          >
+            <Film size={13} /> ③ 合成成片
+          </Button>
         </div>
       </div>
 
@@ -91,7 +100,13 @@ export default function ProjectDetail({
             </Badge>
             <Badge tone="outline">{project.aspectRatio}</Badge>
             <Badge tone="outline">{project.videoModel}</Badge>
-            <Badge tone={project.state === 'STORYBOARD_CONFIRMED' ? 'success' : 'neutral'}>
+            <Badge
+              tone={
+                project.state === 'STORYBOARD_CONFIRMED' || project.state === 'COMPOSED'
+                  ? 'success'
+                  : 'neutral'
+              }
+            >
               {PROJECT_STATE_LABEL[project.state] ?? project.state}
             </Badge>
           </div>
@@ -100,6 +115,14 @@ export default function ProjectDetail({
 
       {view === 'storyboard' ? (
         <StoryboardConfirm projectId={projectId} />
+      ) : view === 'compose' ? (
+        <ComposePanel
+          projectId={projectId}
+          shots={shots ?? []}
+          finalVideoPath={project?.finalVideoPath}
+          composedAt={project?.composedAt}
+          composeError={project?.composeError}
+        />
       ) : (
         <div className="grid grid-cols-[280px_1fr] gap-4">
           <aside className="space-y-2">
@@ -156,4 +179,5 @@ const PROJECT_STATE_LABEL: Record<string, string> = {
   DRAFT: '简报草稿',
   STORYBOARD: '分镜待确认',
   STORYBOARD_CONFIRMED: '分镜已定稿',
+  COMPOSED: '已成片',
 }

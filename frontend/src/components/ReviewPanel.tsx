@@ -29,12 +29,15 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
   const [progress, setProgress] = useState<Record<number, number>>({})
   const connected = useProgressEvents((e: ProgressEventMsg) => {
     if (e.shotId !== shotId) return
+    // 合成事件（compose_*）是项目维度，versionId 为 null；本面板只处理镜头生成事件
+    const vid = e.versionId
+    if (vid == null) return
     if (e.type === 'progress') {
-      setProgress((p) => ({ ...p, [e.versionId]: e.percent ?? 0 }))
+      setProgress((p) => ({ ...p, [vid]: e.percent ?? 0 }))
     } else if (e.type === 'completed' || e.type === 'failed') {
       setProgress((p) => {
         const next = { ...p }
-        delete next[e.versionId]
+        delete next[vid]
         return next
       })
       invalidateAll()

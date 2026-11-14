@@ -61,6 +61,17 @@ public class Project {
     @Column(nullable = false, length = 24)
     private String state = "DRAFT";
 
+    /** 成片相对存储根目录路径（如 compose/project_3/final.mp4；/media/store/ 前缀访问） */
+    @Column(name = "final_video_path", length = 500)
+    private String finalVideoPath;
+
+    @Column(name = "composed_at", length = 32)
+    private String composedAt;
+
+    /** 最近一次合成失败原因（成功后清空） */
+    @Column(name = "compose_error", length = 2000)
+    private String composeError;
+
     @Column(nullable = false, length = 32)
     private String createdAt;
 
@@ -97,6 +108,12 @@ public class Project {
     public void setUpscaleEnabled(boolean upscaleEnabled) { this.upscaleEnabled = upscaleEnabled; }
     public String getState() { return state; }
     public void setState(String state) { this.state = state; }
+    public String getFinalVideoPath() { return finalVideoPath; }
+    public void setFinalVideoPath(String finalVideoPath) { this.finalVideoPath = finalVideoPath; }
+    public String getComposedAt() { return composedAt; }
+    public void setComposedAt(String composedAt) { this.composedAt = composedAt; }
+    public String getComposeError() { return composeError; }
+    public void setComposeError(String composeError) { this.composeError = composeError; }
     public String getCreatedAt() { return createdAt; }
     public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
     public String getUpdatedAt() { return updatedAt; }

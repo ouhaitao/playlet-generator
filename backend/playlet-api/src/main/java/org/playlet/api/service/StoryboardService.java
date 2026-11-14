@@ -228,12 +228,13 @@ public class StoryboardService {
             // CONFIRMED / 无草稿但槽位有值 → 已定稿，跳过
         }
         String state = project.getState();
-        if (pending == 0) {
+        if (pending == 0 && !ProjectComposeService.STATE_PROJECT_COMPOSED.equals(state)) {
             state = STATE_STORYBOARD_CONFIRMED;
             project.setState(state);
             project.setUpdatedAt(LocalDateTime.now().format(TS));
             projects.save(project);
         }
+        // 已成片项目重复批量确认不回退状态（成片仍是最新内容时保持 COMPOSED）
         return new ConfirmResult(confirmedNow, pending, state);
     }
 
@@ -251,7 +252,10 @@ public class StoryboardService {
             throw new NotFoundException("shot " + shotId + " not in project " + projectId);
         }
         PromptDraft draft = gate.manualShotDraft(shotId, content);
-        if (STATE_STORYBOARD_CONFIRMED.equals(project.getState())) {
+        String st = project.getState();
+        if (STATE_STORYBOARD_CONFIRMED.equals(st)
+                || ProjectComposeService.STATE_PROJECT_COMPOSED.equals(st)) {
+            // 定稿/已成片后改分镜 → 回退待确认（成片与新分镜不再一致，需重新确认+合成）
             project.setState(STATE_STORYBOARD);
             project.setUpdatedAt(LocalDateTime.now().format(TS));
             projects.save(project);

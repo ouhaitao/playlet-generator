@@ -32,6 +32,18 @@ export interface Project {
   bgmAssetPath?: string
   upscaleEnabled: boolean
   state: string
+  /** 成片相对存储根路径（/media/store/ 前缀可播）；合成成功后有值 */
+  finalVideoPath?: string
+  composedAt?: string
+  /** 最近一次合成失败原因 */
+  composeError?: string
+}
+
+/** POST /api/projects/{id}/compose 立即返回（异步，进度走 WS compose_* 事件）。 */
+export interface ComposeResult {
+  state: 'COMPOSING'
+  finalVideoPath?: string
+  message?: string
 }
 
 export interface CharacterRef {

@@ -45,8 +45,6 @@
 
 ## 2. 环境事实（已侦察核实）
 
-- **ComfyUI 服务器**：`http://127.0.0.1:28070`
-- **ComfyUI 目录**：`F:\ai\comfyui\ComfyUI_windows_portable`
 - **可用生成能力**（当前多为 UI 图格式，尚未导出 API 格式）：
 
   | 环节 | 工作流 / 节点 | 状态 |

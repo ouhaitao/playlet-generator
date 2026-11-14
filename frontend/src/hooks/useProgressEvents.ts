@@ -1,11 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 
 export interface ProgressEventMsg {
-  type: 'started' | 'progress' | 'completed' | 'failed'
-  versionId: number
-  shotId: number
-  comfyPromptId: string
+  type:
+    | 'started'
+    | 'progress'
+    | 'completed'
+    | 'failed'
+    | 'compose_started'
+    | 'compose_progress'
+    | 'compose_completed'
+    | 'compose_failed'
+  /** 合成事件的项目维度 id（镜头事件为 null） */
+  projectId?: number | null
+  versionId?: number | null
+  shotId?: number | null
+  comfyPromptId?: string | null
   percent?: number
+  /** 合成进度时为阶段名 concat | mix | subtitle */
   message?: string
   artifactPath?: string
 }
