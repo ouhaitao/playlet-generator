@@ -37,7 +37,7 @@ class ComposeServiceE2ETest {
     static boolean ffmpegAvailable() {
         resolveFfmpeg();
         try {
-            Process proc = new ProcessBuilder(ffmpegPath, "-version")
+            Process proc = new ProcessBuilder(ffmpegPath + "/ffmpeg", "-version")
                     .redirectErrorStream(true).start();
             boolean done = proc.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
             return done && proc.exitValue() == 0;

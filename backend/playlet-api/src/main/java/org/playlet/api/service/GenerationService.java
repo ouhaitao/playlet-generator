@@ -1,6 +1,7 @@
 package org.playlet.api.service;
 
 import jakarta.annotation.PostConstruct;
+import org.playlet.agent.PromptTranslator;
 import org.playlet.api.web.ProgressEvent;
 import org.playlet.api.web.ProgressEventPublisher;
 import org.playlet.comfyui.backend.GenerationBackend;
@@ -36,6 +37,9 @@ import java.util.concurrent.Executors;
  * progress 事件经 {@link ComfyProgressMonitor} 转发为百分比推送（WS 断开不影响正确性）。
  *
  * <p>只接受**已确认**的提示词（Shot.visualPrompt 由确认门写入，见 DESIGN.md §6.3）。
+ * 槽位存的是给用户看的**中文**；提交后端前经 {@link PromptTranslator} 实时翻译成英文
+ * （模型对中文支持差）。翻译只在提交时发生、对用户透明，手改/重优化不会使英文过期。
+ * LLM 不可用时翻译直接抛异常、不降级（与 planner/optimizer 同一策略），本次生成失败。
  * 崩溃恢复：启动时把残留 GENERATING 行重新挂回轮询（ComfyUI history 仍在）。
  *
  * <p>首帧阶段：图后端由能力声明选出（supports TEXT_TO_IMAGE），默认取配置
@@ -53,6 +57,7 @@ public class GenerationService {
     private final List<GenerationBackend> backends;
     private final ProgressEventPublisher events;
     private final ComfyProgressMonitor monitor;
+    private final PromptTranslator translator;
     private final String defaultImageBackend;
     private final ExecutorService workers = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "gen-worker");
@@ -63,6 +68,7 @@ public class GenerationService {
     public GenerationService(ShotRepository shots, ShotVersionRepository versions,
                              List<GenerationBackend> backends,
                              ProgressEventPublisher events, ComfyProgressMonitor monitor,
+                             PromptTranslator translator,
                              @Value("${playlet.generation.default-image-backend}")
                              String defaultImageBackend) {
         this.shots = shots;
@@ -70,6 +76,7 @@ public class GenerationService {
         this.backends = backends;
         this.events = events;
         this.monitor = monitor;
+        this.translator = translator;
         this.defaultImageBackend = defaultImageBackend;
     }
 
@@ -121,10 +128,13 @@ public class GenerationService {
         }
 
         Long seed = seedOverride;
+        // 提交前把中文提示词翻译成英文（模型对中文支持差）。LLM 不可用即抛异常、不降级——
+        // 中文原样下发只会出垃圾图，宁可让本次生成失败把问题暴露出来。
+        String enPrompt = translator.toEnglish(shot.getVisualPrompt());
         GenerationRequest req = GenerationRequest.video(
-                shot.getVisualPrompt(), shot.getDurationSec(), project.getAspectRatio(),
+                enPrompt, shot.getDurationSec(), project.getAspectRatio(),
                 shot.getFirstFrameImage(), seed, project.isAudioNative(),
-                negativeExtra(shot));
+                negativeExtra(shot, translator));
 
         String promptId = backend.submit(req);
 
@@ -171,8 +181,10 @@ public class GenerationService {
         }
 
         int[] wh = resolveImageSize(project);
+        // 提交前把中文提示词翻译成英文（模型对中文支持差）。LLM 不可用即抛异常、不降级。
+        String enPrompt = translator.toEnglish(shot.getVisualPrompt());
         GenerationRequest req = GenerationRequest.image(
-                shot.getVisualPrompt(), wh[0], wh[1], seedOverride, negativeExtra(shot));
+                enPrompt, wh[0], wh[1], seedOverride, negativeExtra(shot, translator));
         String promptId = backend.submit(req);
 
         int nextNo = versions.findByShot_IdOrderByVersionNoAsc(shotId).size() + 1;
@@ -219,10 +231,13 @@ public class GenerationService {
      * 首帧图分辨率：项目显式分辨率优先；否则按画幅映射到常见基准。
      * anima/illustrious 模板 width/height 均为占位符，必须有值。
      */
-    /** 已确认的负向提示 → extraParams（SD 系图像后端消费 negative 键；视频后端忽略）。 */
-    private static java.util.Map<String, Object> negativeExtra(Shot shot) {
+    /** 已确认的负向提示 → extraParams（SD 系图像后端消费 negative 键；视频后端忽略）。
+     *  与正向提示词一样，中文负向提示同样翻译成英文后再下发。 */
+    private static java.util.Map<String, Object> negativeExtra(Shot shot, PromptTranslator translator) {
         String neg = shot.getNegativePrompt();
-        return neg == null || neg.isBlank() ? java.util.Map.of() : java.util.Map.of("negative", neg);
+        return neg == null || neg.isBlank()
+                ? java.util.Map.of()
+                : java.util.Map.of("negative", translator.toEnglish(neg));
     }
 
     private int[] resolveImageSize(Project project) {

@@ -15,6 +15,10 @@ import type { StoryboardRow } from '@/types/domain'
  * 梗概 → 切镜（LLM/回退切句）→ 整表展示（序/时长/景别/运镜/草稿状态）
  * → 批量确认（逐镜确认草稿写槽）/ 逐行改（改 → 新草稿 → 再确认）
  * → 全部确认后项目状态推进 STORYBOARD_CONFIRMED。
+ *
+ * 提示词双语约定：本页展示/编辑的一律是**中文**提示词（给用户看的）；
+ * 生成图片/视频时由后端 PromptTranslator 在提交前实时翻译成英文（给模型用的），
+ * 用户无感知，手改中文也不会导致英文过期。
  */
 export default function StoryboardConfirm({ projectId }: { projectId: number }) {
   const qc = useQueryClient()
@@ -133,6 +137,12 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
               确认 = 草稿提示词（含负向）写入槽位，进入生成链路（§6.3）
             </p>
           )}
+          {list.length > 0 && (
+            <p className="text-2xs text-muted-foreground">
+              此处展示与编辑的均为<b>中文提示词</b>（给你看的）；生成图片/视频时后端会自动翻译成
+              <b>英文</b>下发模型，对你透明。
+            </p>
+          )}
           {generate.isError && <ErrorState message={String(generate.error)} />}
           {confirmAll.isError && <ErrorState message={String(confirmAll.error)} />}
           {generate.isSuccess && !generate.data.usedLlm && (
@@ -163,7 +173,7 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
                   <TH className="w-16">时长</TH>
                   <TH className="w-14">景别</TH>
                   <TH className="w-14">运镜</TH>
-                  <TH>提示词（草稿 → 槽位）</TH>
+                  <TH>中文提示词（草稿 → 槽位；生成时自动译英）</TH>
                   <TH className="w-24">状态</TH>
                   <TH className="w-40">操作</TH>
                 </TR>

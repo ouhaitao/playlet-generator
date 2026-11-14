@@ -91,7 +91,7 @@ public class StoryboardPlanner {
         }
         List<ShotSpec> fallback = splitSentences(synopsis);
         if (fallback.isEmpty()) {
-            throw new IllegalArgumentException("剧情梗概切分后没有任何镜头，请补充内容");
+            throw new RuntimeException("LLM不可用");
         }
         return new Plan(fallback, false);
     }

@@ -26,22 +26,9 @@
 | 部署形态 | **外网部署**（playlet-generator + ComfyUI 都在外网）；单用户（用户本人） | **无鉴权、无多租户、无用户体系**，配置写死单用户 |
 | 交互端 | 仅 Web 端 | 审核界面只在 Web 做，无需处理 QQ 发图/发视频的媒体接口限制 |
 | LLM 位置 | **LLM 在内网**，内网可自由访问公网，但**严格监管、不能做反向隧道** | ComfyUI 在外网本地直连，只有 LLM 需要跨网 |
-| LLM 接入 | **只保留 OpenAI 兼容接口一种方案**，base-url 可切换 | `LlmClient` 只需一个实现；QQbot/simple-robot/OneBot **全部删除** |
+| LLM 接入 | **只保留 OpenAI 兼容接口一种方案**，base-url 可切换 | `LlmClient` 只需一个实现 |
 | 生成节奏 | 串行：审完第 N 段才生成第 N+1 段 | 状态机以"当前活跃镜头"为核心，逻辑简单 |
 | 一致性方案 | 预生成角色库 + 用户上传参考图 + ComfyUI 工作流生成参考图 | 不训练 LoRA，靠参考图驱动 |
-
-### 1.1 为什么删除 QQbot 方案（已论证，勿再回头）
-
-原始设想是"系统与 QQ 里那个 LLM-bot 对话来当 LLM"。经核实该路径不成立或不划算：
-
-1. **QQ 官方机器人开放平台没有"调用某个 bot 来对话"的 API**。其模型是反向的：机器人是**被动应答方**，消息发起方永远是真人用户（`openid`）。三条铁律：不支持 bot 对 bot、不支持程序伪装成用户、没有"以用户身份主动发消息给 bot"的接口。
-2. **唯一能落地的路径是控制一个真实 QQ 个人号**（OneBot 协议端 NapCat/Lagrange/LLOneBot + simple-robot OneBot 组件）去私聊那个 bot。代价：个人号封号风险、长消息分片重组、QQ 消息**无 request-id** 需自己埋标记、Markdown 格式丢失、秒级延迟。
-3. **致命伤**：目标 bot 的后端是一个**完整 agent**（有工具、多步推理、会反问），不是裸的 `POST /chat/completions`。而本项目 agent 层需要**可靠的结构化输出**（槽位填充要 JSON、分镜表要固定 schema）。把程序化 LLM 调用塞进聊天通道，无法保证拿回干净的结构化结果。
-4. 内网"严格监管"，额外挂个人小号把内网 LLM 输出中转出去，运营风险画像与既有通道不同。
-
-**结论**：LLM 走 OpenAI 兼容接口，`base-url` 可切换——在局域网时指向内网 LLM，在外网时指向公网 OpenAI 兼容 API（如 DeepSeek 官方 API）。同一份代码只切配置。成本上，短剧生成的开销大头是 GPU 视频生成（一段 5~10s 视频数分钟到十几分钟），LLM 的 token 费用可忽略。
-
-> 保留的备选（未采用）：反转控制——playlet-generator 暴露带鉴权 REST API，由内网 DSH agent 出站调用。复用既有 QQ↔DSH 通道、不新增个人号，但会把 agent 的"大脑"移出本系统，产品形态改变。仅当公网 LLM API 完全不可用时再考虑。
 
 ## 2. 环境事实（已侦察核实）
 
@@ -116,7 +103,7 @@
 
 ```
 domain      领域模型与状态机：项目/角色/场景/分镜(Shot)/镜头版本(Version)/审核(Review)
-llm-spi     LlmClient 接口 + OpenAiCompatibleLlmClient（唯一实现，base-url 可切）
+llm-spi     LlmClient 接口 + OpenAiCompatibleLlmClient（唯一实现，base-url 可切），如果llm不可用则直接报错
 agent       槽位填充编排：多轮对话 → 项目简报 → 分镜表
 comfyui     ComfyClient(直连原生 API)
             GenerationBackend 接口（能力声明 + 抽象生成请求 → API-JSON）
@@ -415,7 +402,10 @@ agent 不只是信息收集者，还是**提示词优化者**。用户的粗糙�
 
   **实现进展（2026-11-13）**：模板工具链（剪枝/折叠/参数化/导入器 + 工作流库前端导入入口）、异步生成+WS 进度+崩溃恢复、**首帧图生成阶段（闸门②）已打通**：`GenerationService.generateFirstFrame` 按能力声明选图后端（默认 ANIMA，配置 `playlet.generation.default-image-backend`）→ 提交即返 GENERATING → history 轮询完成 → 镜头进 `FIRST_FRAME_REVIEW`。审核通过时 `ReviewController` 经 `ComfyFileStore.promoteToInput` 把产物从 ComfyUI output 复制进 **input 目录**（`playlet/shot_<id>_v<no>.png`）并回填 `Shot.firstFrameImage`——图生视频的 `LoadImage` 直接用此名（H3 模板的 `{{first_frame}}` 占位符）。视频生成前置校验：REFERENCE 来源镜头必须先有已审核通过的首帧图（§7 L4：改视频不如改首帧）。打回首帧会清 `firstFrameImage` 并回 PENDING。
 
-  **实现进展（2026-11-13 续）§6.3 确认门后端已打通**：`playlet-agent.PromptOptimizer`（LLM 优化 + **确定性回退**：LLM 不可用/输出不可解析时规则拼装「风格前缀+景别运镜+原描述+默认负向」，确认门永远有草稿可审）→ `PromptDraft`（DRAFT/CONFIRMED/REJECTED，versionNo 递增，旧未决草稿作废、历史保留）→ `DraftController`：`POST /api/drafts/optimize`（SHOT.visual_prompt / CHARACTER.appearance / SCENE.description）、`/{id}/confirm`（写槽位 **含 negative**）、`/{id}/reject`（带意见回 agent）。负向提示独立成列（V4 迁移：`prompt_draft.negative_prompt` + `shot.negative_prompt`）；生成链路经 `GenerationRequest.extraParams.negative` 消费（SD 系图像后端已支持该键，视频后端忽略）。前端 `DraftGate` 组件挂审核台顶部（ 提示词门 → ① 首帧 → ② 视频）。真实冒烟：optimize→门拦截（槽位不变）→confirm 写槽→re-optimize v2→reject→重复 confirm 400 全绿；离线测试 +8（PromptOptimizerTest）。
+  **实现进展（2026-11-13 续）§6.3 确认门后端已打通**：`playlet-agent.PromptOptimizer`（LLM 优化，LLM 不可用则直接报错）→ `PromptDraft`（DRAFT/CONFIRMED/REJECTED，versionNo 递增，旧未决草稿作废、历史保留）→ `DraftController`：`POST /api/drafts/optimize`（SHOT.visual_prompt / CHARACTER.appearance / SCENE.description）、`/{id}/confirm`（写槽位 **含 negative**）、`/{id}/reject`（带意见回 agent）。负向提示独立成列（V4 迁移：`prompt_draft.negative_prompt` + `shot.negative_prompt`）；生成链路经 `GenerationRequest.extraParams.negative` 消费（SD 系图像后端已支持该键，视频后端忽略）。前端 `DraftGate` 组件挂审核台顶部（ 提示词门 → ① 首帧 → ② 视频）。真实冒烟：optimize→门拦截（槽位不变）→confirm 写槽→re-optimize v2→reject→重复 confirm 400 全绿；离线测试 +8（PromptOptimizerTest）。
+
+  **实现进展（2026-11-14）提示词双语：中文给用户、英文给模型，提交前实时翻译**。槽位（`Shot.visualPrompt`/`negativePrompt`）与草稿存的、前端展示/编辑的、`ShotVersion.prompt` 留档的，**一律是中文**；而 ComfyUI 后端（SD/H3 等）对中文支持差，**实际下发必须是英文**。新增 `playlet-agent.PromptTranslator`（`@Service`，ctor `(LlmClient)`），在 `GenerationService.generateFirstFrame`/`generateVideo` **构造 `GenerationRequest` 前**把当前槽位的中文（正向 + 负向）实时译英。为什么在提交前译而非切镜时缓存英文：用户可随时手改提示词（`manualShotDraft`）或驳回重优化，任何提前缓存的英文都会随之失效；提交前按当前槽位实时译天然规避过期，且无需新增存储列。整个流程对用户透明，中文是单一用户面。翻译遵循全局「LLM 不可用即报错、不降级」策略：含中文却翻不出来（LLM 挂 / 输出空 / 仍含中文）→ 抛 `IllegalStateException`，本次生成失败暴露问题（中文原样下发只会出垃圾图）；空白与纯英文（无 CJK 汉字）属「本就不用翻」，原样返回、不调 LLM。离线测试 +8（PromptTranslatorTest）。
+
 - **M2（声音与一致性）**：台词 TTS + 角色音色绑定 + 三层混音（含 ducking）；接入第二个视频后端验证能力声明式适配器；多图参考提升一致性。
 - **M3（进阶）**：一镜到底续帧（H3 首尾帧双约束）+ 关键帧重置 + SeedVR2 自动修复链；口型对齐（若 H3 的音频参考验证可行）。
 
