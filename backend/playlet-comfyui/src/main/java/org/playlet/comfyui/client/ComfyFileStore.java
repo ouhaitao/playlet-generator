@@ -28,7 +28,7 @@ public class ComfyFileStore {
 
     public ComfyFileStore(
             @Value("${playlet.comfyui.output-dir}") String outputDir,
-            @Value("${playlet.comfyui.input-dir:${playlet.comfyui.output-dir}/../input}") String inputDir) {
+            @Value("${playlet.comfyui.input-dir}") String inputDir) {
         this.outputDir = Paths.get(outputDir).toAbsolutePath().normalize();
         this.inputDir = Paths.get(inputDir).toAbsolutePath().normalize();
     }

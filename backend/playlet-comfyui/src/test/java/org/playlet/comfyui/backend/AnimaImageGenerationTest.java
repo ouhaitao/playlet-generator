@@ -2,6 +2,7 @@ package org.playlet.comfyui.backend;
 
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
+import org.playlet.comfyui.backend.image.AnimaImageBackend;
 import org.playlet.comfyui.client.ComfyClient;
 import org.playlet.comfyui.template.ComfyNodeTypeResolver;
 import org.playlet.comfyui.template.WorkflowTemplateLoader;

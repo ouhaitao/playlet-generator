@@ -7,22 +7,13 @@
 
 ## 0. 交接快速上手
 
-**工作目录已迁回本地**：`E:\parry\playlet-generator`（原远程共享 `\\170.240.110.32\playlet-generator` 及 robocopy 镜像流程作废，直接在本地构建/运行/调试）。
+**构建/运行**:见 BUILDING.md
 
-**构建/运行（细节与坑见 BUILDING.md）**
-- 离线测试：`mvn -B -f E:\parry\playlet-generator\backend\pom.xml test '-Dtest=!H3VideoSpikeTest,!AnimaImageGenerationTest,!ComfyClientSpikeTest,!RealWorkflowImportTest,!WorkflowImportCliTest' '-Dsurefire.failIfNoSpecifiedTests=false'`
-- **跑应用前必须整 reactor `mvn install -DskipTests`**（坑 #6：`-pl` 单模块跑会用本地仓库旧 jar）
-- 跑应用：`$env:PLAYLET_STORAGE_DIR="E:\parry\playlet-generator\gitExclude\playlet-data"; mvn -B -pl playlet-api spring-boot:run`（先杀 8080 残留）
-- 前端：`E:\parry\playlet-generator\frontend`；`npm run build` 验证；`npm run dev` = 5173，proxy `/api /media /ws` → 8080
-- **会话 PATH 会过期**：`$env:Path = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path + ';' + (Get-ItemProperty 'HKCU:\Environment').Path + ';' + $env:Path`
-
-**环境地址**：ComfyUI `http://127.0.0.1:28070`（output/input 在 `F:\ai\comfyui\ComfyUI_windows_portable\ComfyUI\`）；**LLM 未配置**（`PLAYLET_LLM_BASE_URL/API_KEY/MODEL` 未设 → agent 全走确定性回退）。
-
-**会话策略**：danger-full-access；**永远不要**传 `sandbox_permissions`/`justification`（会报 invalid escalation）。用户用中文交流；用户会突然结束会话（"我要下班了"），收尾时杀后台 job、留可恢复现场。
+**会话策略**：danger-full-access；**永远不要**传 `sandbox_permissions`/`justification`（会报 invalid escalation）。
 
 **当前运行时（写本文件时）**：无后台进程（上一轮冒烟验证完已收尾）。恢复会话后先 `Get-NetTCPConnection -LocalPort 8080/5173` 确认，死了就按上面命令重起。
 
-**库内冒烟数据**（`E:\parry\playlet-generator\gitExclude\playlet-data\playlet.db`，从 `$env:TEMP\playlet-data` 复制而来）：
+**库内冒烟数据**（`\gitExclude\playlet-data\playlet.db`）：
 - project 3 / shot 3 = 全链样例（v4 首帧 APPROVED → v5 视频 APPROVED，shot=APPROVED）；shot 4 = §6.3 门样例（draft v1 CONFIRMED 已写槽、v2 REJECTED 带意见）。
 - **project 4 = 闸门①样例（2026-11-13 新增）**：3 镜（切句回退、时长已对齐 H3 网格 5.167s）、shot 5 走过「逐行改→v2 草稿→批量确认写槽」，项目 state=STORYBOARD_CONFIRMED。
 - projects 1/2 是早期脏数据（shot 1/2 有遗留 `firstFrameImage=example.png`），可删。

@@ -27,8 +27,8 @@ public class ComfyClient {
 
     public ComfyClient(
             @Value("${playlet.comfyui.base-url}") String baseUrl,
-            @Value("${playlet.comfyui.poll-interval-ms:1500}") long pollIntervalMs,
-            @Value("${playlet.comfyui.timeout-seconds:1800}") int timeoutSeconds) {
+            @Value("${playlet.comfyui.poll-interval-ms}") long pollIntervalMs,
+            @Value("${playlet.comfyui.timeout-seconds}") int timeoutSeconds) {
         this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
         this.pollIntervalMs = pollIntervalMs;
         this.timeoutSeconds = timeoutSeconds;

@@ -1,6 +1,7 @@
 package org.playlet.comfyui.backend;
 
 import org.junit.jupiter.api.Test;
+import org.playlet.comfyui.backend.video.MiniMaxH3Backend;
 import org.playlet.comfyui.client.ComfyClient;
 import org.playlet.comfyui.template.ComfyNodeTypeResolver;
 import org.playlet.comfyui.template.WorkflowTemplateLoader;

@@ -23,7 +23,7 @@ public class FfmpegRunner {
 
     private final String ffmpegPath;
 
-    public FfmpegRunner(@Value("${playlet.ffmpeg.path:ffmpeg}") String ffmpegPath) {
+    public FfmpegRunner(@Value("${playlet.ffmpeg.path}") String ffmpegPath) {
         this.ffmpegPath = ffmpegPath;
     }
 

@@ -19,9 +19,9 @@ public class MediaWebConfig implements WebMvcConfigurer {
     private final String storageDir;
 
     public MediaWebConfig(
-            @Value("${playlet.comfyui.output-dir:F:/ai/comfyui/ComfyUI_windows_portable/ComfyUI/output}")
+            @Value("${playlet.comfyui.output-dir}")
             String comfyOutputDir,
-            @Value("${playlet.storage.dir:./data}") String storageDir) {
+            @Value("${playlet.storage.dir}") String storageDir) {
         this.comfyOutputDir = comfyOutputDir;
         this.storageDir = storageDir;
     }

@@ -1,8 +1,7 @@
 # 构建说明
 
-本仓库工作目录在**本地盘** `E:\parry\playlet-generator`（DSH 会话工作区），构建、验证、运行、调试都在这里直接进行。
-
-> 历史备注：早期源码真源在网络共享 `\\170.240.110.32\playlet-generator`，因 Maven/Java 无法在 UNC 路径构建、SMB 上跑 node_modules/文件监视器/SQLite 不可靠，曾用 robocopy 同步到本地镜像 `%TEMP%\playlet-build` 再构建。**该镜像流程已作废**——代码整体迁到本地盘后无需再同步，直接就地构建。
+本仓库工作目录在**本地盘** ，构建、验证、运行、调试都在这里直接进行。
+后文${playlet-generator}指项目根路径,执行命令前需要替换为真实了路径。
 
 ## 用法
 
@@ -11,15 +10,16 @@
 $env:Path = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path + ';' + (Get-ItemProperty 'HKCU:\Environment').Path + ';' + $env:Path
 
 # 后端：离线测试（排除需要真实 ComfyUI/LLM 的 spike）
-mvn -B -f E:\parry\playlet-generator\backend\pom.xml test '-Dtest=!H3VideoSpikeTest,!AnimaImageGenerationTest,!ComfyClientSpikeTest,!RealWorkflowImportTest,!WorkflowImportCliTest' '-Dsurefire.failIfNoSpecifiedTests=false'
+mvn -B -f ${playlet-generator}\backend\pom.xml test '-Dtest=!H3VideoSpikeTest,!AnimaImageGenerationTest,!ComfyClientSpikeTest,!RealWorkflowImportTest,!WorkflowImportCliTest' '-Dsurefire.failIfNoSpecifiedTests=false'
 
 # 后端：跑应用前必须整 reactor install（坑 #6），再单模块 spring-boot:run
-mvn -B -f E:\parry\playlet-generator\backend\pom.xml install -DskipTests
-$env:PLAYLET_STORAGE_DIR = "E:\parry\playlet-generator\gitExclude\playlet-data"
-mvn -B -f E:\parry\playlet-generator\backend\pom.xml -pl playlet-api spring-boot:run
+mvn -B -f ${playlet-generator}\backend\pom.xml install -DskipTests
+
+# 使用application-local.yml
+mvn -B -f ${playlet-generator}\backend\pom.xml -pl playlet-api spring-boot:run "-Dspring-boot.run.profiles=local"
 
 # 前端
-cd E:\parry\playlet-generator\frontend; npm install; npm run build   # tsc -b && vite build
+cd ${playlet-generator}\frontend; npm install; npm run build   # tsc -b && vite build
 npm run dev   # 5173，proxy /api /media /ws → 127.0.0.1:8080
 ```
 
@@ -27,7 +27,7 @@ npm run dev   # 5173，proxy /api /media /ws → 127.0.0.1:8080
 
 ## 规则
 
-- **运行时数据目录（SQLite、媒体文件）放在 `gitExclude\` 下**（git 忽略、不会被误提交）：`PLAYLET_STORAGE_DIR=E:\parry\playlet-generator\gitExclude\playlet-data`。SQLite 官方不支持网络文件锁，务必在本地盘。
+- **运行时数据目录（SQLite、媒体文件）放在 `gitExclude\` 下**（git 忽略、不会被误提交）：`PLAYLET_STORAGE_DIR=${playlet-generator}\gitExclude\playlet-data`。
 - `target/`、`node_modules/`、`dist/` 为构建产物，已在 `.gitignore`。
 - 跑应用前先杀 8080/5173 残留：`Get-NetTCPConnection -LocalPort 8080 -State Listen`。
 

@@ -43,3 +43,4 @@ frontend/.vite/
 .DS_Store
 /frontend/tsconfig.app.tsbuildinfo
 /frontend/tsconfig.node.tsbuildinfo
+/backend/playlet-api/src/main/resources/application-local.yml

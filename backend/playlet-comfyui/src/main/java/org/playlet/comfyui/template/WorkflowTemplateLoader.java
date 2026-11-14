@@ -37,7 +37,7 @@ public class WorkflowTemplateLoader {
     }
 
     @Autowired
-    public WorkflowTemplateLoader(@Value("${playlet.storage.dir:./data}") String storageDir) {
+    public WorkflowTemplateLoader(@Value("${playlet.storage.dir}") String storageDir) {
         this.storageWorkflows = storageDir == null ? null : Path.of(storageDir).resolve("workflows");
     }
 

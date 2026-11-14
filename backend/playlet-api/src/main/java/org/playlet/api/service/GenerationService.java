@@ -63,7 +63,7 @@ public class GenerationService {
     public GenerationService(ShotRepository shots, ShotVersionRepository versions,
                              List<GenerationBackend> backends,
                              ProgressEventPublisher events, ComfyProgressMonitor monitor,
-                             @Value("${playlet.generation.default-image-backend:ANIMA}")
+                             @Value("${playlet.generation.default-image-backend}")
                              String defaultImageBackend) {
         this.shots = shots;
         this.versions = versions;

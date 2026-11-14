@@ -2,7 +2,7 @@ package org.playlet.comfyui;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.junit.jupiter.api.Test;
-import org.playlet.comfyui.backend.MiniMaxH3Backend;
+import org.playlet.comfyui.backend.video.MiniMaxH3Backend;
 import org.playlet.comfyui.template.WorkflowTemplateLoader;
 
 import java.util.Map;

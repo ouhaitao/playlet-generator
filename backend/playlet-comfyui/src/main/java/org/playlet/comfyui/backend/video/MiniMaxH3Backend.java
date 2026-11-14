@@ -1,6 +1,9 @@
-package org.playlet.comfyui.backend;
+package org.playlet.comfyui.backend.video;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.playlet.comfyui.backend.GenerationBackend;
+import org.playlet.comfyui.backend.GenerationRequest;
+import org.playlet.comfyui.backend.GenerationResult;
 import org.playlet.comfyui.client.ComfyClient;
 import org.playlet.comfyui.client.ComfyUiException;
 import org.playlet.comfyui.template.WorkflowPruner;

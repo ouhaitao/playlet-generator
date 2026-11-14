@@ -1,4 +1,4 @@
-package org.playlet.comfyui.backend;
+package org.playlet.comfyui.backend.image;
 
 import org.playlet.comfyui.client.ComfyClient;
 import org.playlet.comfyui.template.NodeTypeResolver;
