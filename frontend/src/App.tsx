@@ -1,10 +1,13 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Plus } from 'lucide-react'
 import { api } from '@/lib/api'
 import { AppShell, type NavKey } from '@/components/AppShell'
+import ProjectCreateDialog from '@/components/ProjectCreateDialog'
 import ProjectDetail from '@/components/ProjectDetail'
 import WorkflowLibrary from '@/components/WorkflowLibrary'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/states'
 
@@ -15,6 +18,7 @@ import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/states'
 export default function App() {
   const [page, setPage] = useState<NavKey>('projects')
   const [projectId, setProjectId] = useState<number | null>(null)
+  const [creating, setCreating] = useState(false)
   const { data: projects, isLoading, error, refetch } = useQuery({
     queryKey: ['projects'],
     queryFn: api.projects.list,
@@ -29,13 +33,23 @@ export default function App() {
         <ProjectDetail projectId={projectId} onBack={() => setProjectId(null)} />
       ) : (
         <div className="space-y-3">
-          <h2 className="text-sm font-semibold">项目列表</h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold">项目列表</h2>
+            <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Plus size={13} /> 创建项目
+            </Button>
+          </div>
           {isLoading && <SkeletonRows rows={3} />}
           {error && <ErrorState message={`后端未就绪：${String(error)}`} onRetry={() => refetch()} />}
           {projects && projects.length === 0 && (
             <EmptyState
               title="暂无项目"
-              hint="对话式建项目页面上线后，在这里用自然语言描述剧情即可创建。"
+              hint="创建一个项目，填写剧情梗概、模式与画幅后即可进入分镜流程。"
+              action={
+                <Button variant="primary" size="sm" onClick={() => setCreating(true)}>
+                  <Plus size={13} /> 创建项目
+                </Button>
+              }
             />
           )}
           {projects && projects.length > 0 && (
@@ -61,6 +75,12 @@ export default function App() {
             </ul>
           )}
         </div>
+      )}
+      {creating && (
+        <ProjectCreateDialog
+          onCreated={(id) => { setCreating(false); setProjectId(id) }}
+          onClose={() => setCreating(false)}
+        />
       )}
     </AppShell>
   )
