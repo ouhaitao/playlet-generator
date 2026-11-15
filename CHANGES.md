@@ -1,0 +1,1 @@
+- [2026-11-15] 修复 r2v 工作流导入失败：剪枝器对必填消费端无同类型链接可改接时（纯生产节点如共享 VAELoader）改为**钉住源节点**而非抛 PruneException，去留交孤儿 GC；并修 PrimitiveStringMultiline 误用 num: 前缀、MiniMaxH3ReferenceToVideo prompt 未参数化。保持 fail-loud（歧义仍拒绝）。

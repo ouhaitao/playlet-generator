@@ -1,0 +1,25 @@
+[ {
+  "name" : "audio",
+  "hostId" : "130",
+  "inputName" : "audio",
+  "sourceId" : "121",
+  "sourceOutput" : 0,
+  "type" : "AUDIO",
+  "sourceKind" : "chain"
+}, {
+  "name" : "vae",
+  "hostId" : "147",
+  "inputName" : "vae",
+  "sourceId" : "119",
+  "sourceOutput" : 0,
+  "type" : "VAE",
+  "sourceKind" : "source"
+}, {
+  "name" : "audio_vae",
+  "hostId" : "147",
+  "inputName" : "audio_vae",
+  "sourceId" : "120",
+  "sourceOutput" : 0,
+  "type" : "VAE",
+  "sourceKind" : "source"
+} ]

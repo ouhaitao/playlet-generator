@@ -3,6 +3,8 @@ package org.playlet.comfyui.template;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -19,12 +21,16 @@ import java.util.Set;
  * <ol>
  *   <li>遍历 C 每个输出槽的每个消费端 (H, I)：
  *     <ul>
+ *       <li>H 已在删除集 → 跳过（其必填输入随 H 一起消失）</li>
  *       <li>I 在 H 上是**可选**输入 → 删除该链接（如 first_frame 关）</li>
  *       <li>I 在 H 上是**必填**输入 → **旁路改接**：H.inputs[I] 改指向 C 的同类型输入链接
  *           （如 LoRA 关：host.model→unet、host.clip→clip）。同类型输入链接不唯一即拒绝，不猜</li>
+ *       <li>I 必填且 C 上**无**同类型输入链接可改接（纯生产节点，如与必填解码链共享的
+ *           VAELoader）→ **钉住 C**：保留该必填链接、不删 C（这不是猜：图保持原样合法，
+ *           只断开被关槽位自己的可选链接；C 的去留交给孤儿 GC）</li>
  *     </ul>
  *   </li>
- *   <li>删除 C</li>
+ *   <li>删除 C（未被钉住时）</li>
  *   <li>孤儿 GC：无消费端且非 output_node 的节点迭代删净（如 LoadImage 上游的 ImageScale）</li>
  * </ol>
  *
@@ -32,6 +38,8 @@ import java.util.Set;
  * 占位符替换在调用方于剪枝**之后**进行。
  */
 public final class WorkflowPruner {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkflowPruner.class);
 
     private WorkflowPruner() {
     }
@@ -48,17 +56,24 @@ public final class WorkflowPruner {
                                    Set<String> disabledSlots, NodeTypeResolver types) {
         ObjectNode wf = workflow.deepCopy();
         Set<String> toDelete = new LinkedHashSet<>();
+        Set<String> processed = new HashSet<>();
 
         for (WorkflowSlot slot : slots) {
-            if (!disabledSlots.contains(slot.name()) || toDelete.contains(slot.sourceId())) {
+            if (!disabledSlots.contains(slot.name())) {
                 continue;
             }
-            ObjectNode source = node(wf, slot.sourceId());
-            if (source == null) {
-                throw new PruneException("source node missing: " + slot.sourceId());
+            String sourceId = slot.sourceId();
+            if (!processed.add(sourceId)) {
+                continue; // 耦合组：同源已处理（关其一即关整个源）
             }
-            disableNode(wf, slot.sourceId(), types);
-            toDelete.add(slot.sourceId());
+            ObjectNode source = node(wf, sourceId);
+            if (source == null) {
+                throw new PruneException("source node missing: " + sourceId);
+            }
+            boolean pinned = disableNode(wf, sourceId, toDelete, types);
+            if (!pinned) {
+                toDelete.add(sourceId);
+            }
         }
 
         toDelete.addAll(findOrphans(wf, toDelete, types));
@@ -68,11 +83,19 @@ public final class WorkflowPruner {
         return wf;
     }
 
-    /** 关闭节点 C：消费端可选→删链接；必填→旁路改接；然后标记删除由调用方统一 GC。 */
-    private static void disableNode(ObjectNode wf, String sourceId, NodeTypeResolver types) {
+    /**
+     * 关闭节点 C：消费端可选→删链接；必填→旁路改接；必填且无可改接链接→钉住 C。
+     *
+     * @param deleting 已标记删除的节点集（消费端自身将被删时跳过其必填输入处理）
+     * @return true 表示 C 被钉住（存在必填消费端且无同类型链接可改接，C 必须保留）；
+     *         false 表示 C 可删除
+     */
+    private static boolean disableNode(ObjectNode wf, String sourceId, Set<String> deleting,
+                                       NodeTypeResolver types) {
         ObjectNode source = node(wf, sourceId);
         String classType = source.path("class_type").asText();
         List<String> outTypes = types.outputTypes(classType);
+        boolean pinned = false;
 
         for (int outSlot = 0; outSlot < outTypes.size(); outSlot++) {
             if (!NodeTypeResolver.isLinkType(outTypes.get(outSlot))) {
@@ -80,19 +103,33 @@ public final class WorkflowPruner {
             }
             List<Consumer> consumers = consumersOf(wf, sourceId, outSlot);
             for (Consumer c : consumers) {
+                if (deleting.contains(c.hostId())) {
+                    continue; // 消费端自身将被删除，其必填输入随之消失
+                }
                 ObjectNode host = node(wf, c.hostId());
                 Map<String, String> opt = types.optionalInputTypes(host.path("class_type").asText());
                 if (opt.containsKey(c.inputName())) {
                     ((ObjectNode) host.get("inputs")).remove(c.inputName());
                 } else {
                     ArrayNode replacement = sameTypeInputLink(source, classType, outTypes.get(outSlot), types);
-                    ((ObjectNode) host.get("inputs")).set(c.inputName(), replacement.deepCopy());
+                    if (replacement == null) {
+                        // 纯生产节点（如与必填解码链共享的 VAELoader）无同类型输入链接可改接：
+                        // 保留该必填链接、钉住 C（不猜：图保持原样合法，C 的去留交给孤儿 GC）
+                        pinned = true;
+                        log.debug("pin {} ({}): required consumer {}.{} kept, no reroute target",
+                                sourceId, classType, c.hostId(), c.inputName());
+                    } else {
+                        ((ObjectNode) host.get("inputs")).set(c.inputName(), replacement.deepCopy());
+                    }
                 }
             }
         }
+        return pinned;
     }
 
-    /** C 上类型为 type 的链接型输入；唯一匹配，0 或 >1 都拒绝。 */
+    /**
+     * C 上类型为 type 的链接型输入；唯一匹配返回之，>1 拒绝（不猜），0 返回 null（交由调用方钉住 C）。
+     */
     private static ArrayNode sameTypeInputLink(ObjectNode source, String classType, String type,
                                                NodeTypeResolver types) {
         Map<String, String> req = types.requiredInputTypes(classType);
@@ -109,15 +146,11 @@ public final class WorkflowPruner {
                 matches++;
             }
         }
-        if (matches == 0) {
-            throw new PruneException("bypass " + classType + " (" + type
-                    + "): no same-type input link to reroute to");
-        }
         if (matches > 1) {
             throw new PruneException("bypass " + classType + " (" + type
                     + "): ambiguous, " + matches + " same-type input links — refuse to guess");
         }
-        return found;
+        return found; // matches==0 → null：纯生产节点无可改接目标，调用方钉住 C
     }
 
     private record Consumer(String hostId, String inputName) {

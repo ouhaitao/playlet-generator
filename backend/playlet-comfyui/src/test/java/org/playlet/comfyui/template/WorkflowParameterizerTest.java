@@ -99,6 +99,21 @@ class WorkflowParameterizerTest {
     }
 
     @Test
+    void primitiveStringMultilineGetsStringPlaceholder() throws Exception {
+        // r2v 的节点 138：PrimitiveStringMultiline 直连 ref_image_size（STRING 汇点）
+        ObjectNode wf = parse("""
+                {
+                  "138": {"class_type": "PrimitiveStringMultiline", "inputs": {"value": "subject..."}},
+                  "144": {"class_type": "MiniMaxH3ImageToVideo", "inputs": {
+                      "ref_image_size": ["138", 0], "prompt": "x"}}
+                }
+                """);
+        var r = WorkflowParameterizer.parameterize(wf);
+        assertEquals("{{ref_image_size}}", r.workflow().path("138").path("inputs").path("value").asText(),
+                "multiline STRING primitive 必须用字符串占位符，不能带 num: 前缀");
+    }
+
+    @Test
     void idempotentOnAlreadyParameterized() throws Exception {
         ObjectNode wf = parse("""
                 {

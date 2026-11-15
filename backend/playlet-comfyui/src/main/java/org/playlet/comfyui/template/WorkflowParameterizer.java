@@ -73,7 +73,8 @@ public final class WorkflowParameterizer {
                         put(inputs, "text", "{{" + name + "}}", id, subs);
                     }
                 }
-                case "MiniMaxH3ImageToVideo" -> put(inputs, "prompt", "{{prompt}}", id, subs);
+                case "MiniMaxH3ImageToVideo", "MiniMaxH3ReferenceToVideo" ->
+                        put(inputs, "prompt", "{{prompt}}", id, subs);
                 case "LoadImage" -> {
                     String name = loadImageSlot(wf, id);
                     put(inputs, "image", "{{" + name + "}}", id, subs);
@@ -101,8 +102,9 @@ public final class WorkflowParameterizer {
                 default -> {
                     if (ct.startsWith("Primitive")) {
                         String name = primitiveName(wf, id, ct, classOf, notes);
+                        // PrimitiveStringMultiline 也是 STRING（不能用 num: 前缀）
                         String prefix = ct.equals("PrimitiveBoolean") ? "bool:"
-                                : ct.equals("PrimitiveString") ? "" : "num:";
+                                : ct.contains("String") ? "" : "num:";
                         put(inputs, "value", "{{" + prefix + name + "}}", id, subs);
                     }
                 }

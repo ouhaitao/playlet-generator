@@ -197,13 +197,17 @@ H3 实测清单：`audio(chain)`、`first_frame(source)`——**原生音频也�
 "静音视频"= 关 audio 槽，§8 的三层音频开关由此统一进剪枝机制。
 
 **剪枝算法（`WorkflowPruner`，消费端为中心）**：关闭槽 = 关闭其源节点 C。
-1. 遍历 C 每个输出槽的每个消费端 (H, I)：
+1. 遍历 C 每个输出槽的每个消费端 (H, I)（H 已在删除集则跳过）：
    - I 在 H 上是**可选**输入 → 删除该链接（如 first_frame 关）；
    - I 在 H 上是**必填**输入 → **旁路改接**：H.inputs[I] 改指向 C 的同类型输入链接
-     （如 LoRA 关：host.model→unet、host.clip→clip）。同类型输入链接不唯一即**拒绝**，不猜。
-2. 删除 C。
-3. **孤儿 GC**（先旁路后 GC）：无消费端且非 output_node 的节点迭代删净
-   （如 LoadImage 上游的 ImageScale 传递性删除）。
+     （如 LoRA 关：host.model→unet、host.clip→clip）。同类型输入链接不唯一即**拒绝**，不猜；
+   - I 必填但 C 上**无**同类型输入链接可改接（纯生产节点，如与必填解码链共享的 VAELoader）
+     → **钉住 C**：保留该必填链接、不删 C，只断开被关槽位自己的可选链接。这不是猜——图保持
+     原样即合法，C 的去留交给孤儿 GC（r2v 的 vae/audio_vae 槽由此可导入：VAELoader 同时喂
+     ref2v 可选 vae 与 VAEDecode 必填 vae，关掉可选侧后 VAELoader 被解码链钉住）。
+2. 删除 C（未被钉住时）。
+3. **孤儿 GC**（先旁路/钉住后 GC）：无消费端且非 output_node 的节点迭代删净
+   （如 LoadImage 上游的 ImageScale 传递性删除；关 audio+audio_vae 后 audio VAELoader 失消费端被删）。
 共享同一源节点的多个槽是**耦合组**：关其一即关整个源（LoRA 的 model/clip 双输出同理）。
 
 **能力声明数据驱动**：清单里有 `last_frame` 槽才声明 `FIRST_LAST_FRAME`、有 `audio` 槽才声明

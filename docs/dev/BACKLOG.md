@@ -36,21 +36,10 @@
 
 ## 2. 待办（建议顺序，含完成标准）
 
-### ② 对话式建项目（§6.2 前半）
-- 后端（playlet-agent）：填槽状态机编排（缺必填槽→针对性提问；LLM 写回；**一次性展示完整简报供改**）+ REST `/api/agent/...`。
-- 前端：对话页 + 简报表单。
-- **前置：用户配 LLM 三变量**；未配时只做回退表单（直接填简报建项目）。
-- 完成标准：≤3 轮对话产出 project + 空 shots 骨架（有 LLM 时）。
-
 ### ③ 角色/场景管理页 + 参考图链
 - UI：角色/场景增改、绑定音色；参考图三来源（库/上传/ComfyUI 生成）+ 审核（appearance/description 的草稿能力已备）。
 - referenceImages 注入：H3/SD 后端消费 GenerationRequest.referenceImages（一致性锚点）。
 - 完成标准：角色参考图生成→审核→注入该角色出场镜头的生成请求。
-
-### ④ 音频三层：dialogue TTS + bgm（可放 M1.5）
-- TTS 后端（ComfyUI TTS-Audio-Suite，音色库查询见 dsh-comfyui-workflows skill）+ TTS_GENERATING/TTS_REVIEW 状态接线 + 审核 UI。
-- bgm 素材库上传 + 混音 + 字幕烧录。
-- **合成侧钩子已备（②完成时留）**：ProjectComposeService 的 dialogue 参数当前恒传 null（TTS 未接）；BGM 已通（Project.audioBgm+bgmAssetPath → compose 混音，冒烟未覆盖 BGM 路径，media E2E 有）。接 TTS 时把逐镜台词音频传进 compose 的 dialogueFiles 即可。
 
 ### ⑤ 审核循环补全（§7）
 - L4 回退改分镜：version reject regenLevel=L4 → shot ROLLED_BACK → 允许改提示词/时长 → 重进门；API + UI 均缺。
@@ -63,6 +52,19 @@
 - README（快速开始/配置变量表/架构/截图）、LICENSE（用户定）。
 - 决定 DESIGN.md/BUILDING.md 是否出 gitExclude（建议 DESIGN 进 docs/ 开源，BUILDING 留内部或脱敏）。
 - 清理前端残留依赖 zustand / class-variance-authority（未使用）。
+
+### 暂时不做
+
+#### 音频三层：dialogue TTS + bgm（可放 M1.5）
+- TTS 后端（ComfyUI TTS-Audio-Suite，音色库查询见 dsh-comfyui-workflows skill）+ TTS_GENERATING/TTS_REVIEW 状态接线 + 审核 UI。
+- bgm 素材库上传 + 混音 + 字幕烧录。
+- **合成侧钩子已备（②完成时留）**：ProjectComposeService 的 dialogue 参数当前恒传 null（TTS 未接）；BGM 已通（Project.audioBgm+bgmAssetPath → compose 混音，冒烟未覆盖 BGM 路径，media E2E 有）。接 TTS 时把逐镜台词音频传进 compose 的 dialogueFiles 即可。
+
+#### ② 对话式建项目（§6.2 前半）
+- 后端（playlet-agent）：填槽状态机编排（缺必填槽→针对性提问；LLM 写回；**一次性展示完整简报供改**）+ REST `/api/agent/...`。
+- 前端：对话页 + 简报表单。
+- **前置：用户配 LLM 三变量**；未配时只做回退表单（直接填简报建项目）。
+- 完成标准：≤3 轮对话产出 project + 空 shots 骨架（有 LLM 时）。
 
 ---
 
