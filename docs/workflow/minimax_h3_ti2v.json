@@ -1,7 +1,7 @@
 {
   "92": {
     "inputs": {
-      "filename_prefix": "{{prefix}}",
+      "filename_prefix": "video/MiniMax_H3",
       "format": "auto",
       "codec": "auto",
       "video": [
@@ -16,7 +16,7 @@
   },
   "115": {
     "inputs": {
-      "aspect_ratio": "{{aspect_ratio}}",
+      "aspect_ratio": "16:9 (Widescreen)",
       "megapixels": 0.4,
       "multiple": 32
     },
@@ -27,7 +27,7 @@
   },
   "119": {
     "inputs": {
-      "image": "{{first_frame}}"
+      "image": "example.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -36,7 +36,7 @@
   },
   "121": {
     "inputs": {
-      "image": "{{last_frame}}"
+      "image": "example.png"
     },
     "class_type": "LoadImage",
     "_meta": {
@@ -184,7 +184,7 @@
   },
   "105:15": {
     "inputs": {
-      "noise_seed": "{{num:seed}}"
+      "noise_seed": 894656627817568
     },
     "class_type": "RandomNoise",
     "_meta": {
@@ -211,7 +211,7 @@
   },
   "105:104": {
     "inputs": {
-      "prompt": "{{prompt}}",
+      "prompt": "STYLE: Cinematic 3D render, warm golden stage lighting, shallow depth of field, plush-toy texture, festive energetic mood, subtle film grain, gentle volumetric haze around the stage.\n\nREFERENCE: <Picture 1> is the FIRST FRAME anchor — use it exactly as it is. All 12 golden plush zodiac characters, the ornate golden film-reel arch, the red-carpet stage and the gold confetti must be preserved exactly.\n\nCUT 1 (0s–2.5s): Wide shot, slightly low angle, slow PUSH-IN. The beat DROPS: all 12 characters BOUNCE up and down in unison, HEAD-NOD on every beat, arms SWING side to side in a wave that travels through the group from left to right. The golden dog in front left WAGS its tail and PUMPS the bone; the rooster BOBS its head gripping the drumstick; the snake SLITHERS side to side. Gold confetti keeps FALLING, a spotlight SWEEPS slowly from left to right.\n\nTRANSITION: At 2.5s, a quick WHIP PAN to the right with motion-streak blur.\n\nCUT 2 (2.5s–5s): Medium shot at chest height, camera ORBITS gently while PULLING BACK. The group HITS the final beat: simultaneous arm PUMP overhead, then BOUNCE down with hips WIGGLING. The dog JUMPS with the bone raised high, the rooster SPREADS its wings wide. Gold confetti BURSTS upward from the stage floor, the film-reel arch GLOWS brighter.\n\nSFX: Bouncy orchestral beat, snare hit on each bounce, cymbal crash on the 2.5s whip pan, triumphant final hit on the freeze frame.\n\nFREEZE: Hold on the final beat — all 12 characters freeze mid-pose with arms raised, confetti suspended in mid-air, warm golden glow.",
       "width": [
         "115",
         0
@@ -261,7 +261,7 @@
   },
   "105:111": {
     "inputs": {
-      "value": "{{num:duration}}"
+      "value": 5
     },
     "class_type": "PrimitiveFloat",
     "_meta": {

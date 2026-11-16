@@ -1,6 +1,7 @@
 package org.playlet.api.web;
 
 import org.playlet.comfyui.template.WorkflowLibraryService;
+import org.playlet.comfyui.template.WorkflowType;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,7 +20,7 @@ import java.util.Map;
 
 /**
  * 工作流模板库 REST API（前端「工作流库」页）。
- * 导入走 JSON body（前端 FileReader 读文本上传），避免 multipart 依赖。
+ * 导入走 JSON body（前端 FileReader 读文本上传）+ ?name=&type=，避免 multipart 依赖。
  */
 @RestController
 @RequestMapping("/api/workflows")
@@ -31,31 +32,35 @@ public class WorkflowLibraryController {
         this.library = library;
     }
 
-    /** 模板库列表（内置 + 用户导入）。 */
+    /** 模板库列表（内置 + 用户导入），含类型（IMAGE/VIDEO，无解析元数据时为 null）。 */
     @GetMapping
-    public List<WorkflowLibraryService.Entry> list() {
-        return library.list();
+    public List<WorkflowLibraryService.Entry> list(@RequestParam(required = false) WorkflowType type) {
+        List<WorkflowLibraryService.Entry> all = library.list();
+        return type == null ? all : all.stream().filter(e -> e.type() == type).toList();
     }
 
-    /** 模板详情（槽位 + 参数化后的原文）。 */
+    /** 模板详情：类型 + 解析后的参数元数据（节点分组字段，前端据此渲染填写表单）。 */
     @GetMapping("/{*name}")
     public Map<String, Object> get(@PathVariable String name) throws IOException {
         return library.get(stripLeadingSlash(name));
     }
 
     /**
-     * 导入工作流：body = API 格式 JSON 原文，?name=myflow 指定模板名。
-     * 失败（校验/剪枝自检不过）返回 200 + ok=false + problems，前端展示；
+     * 导入工作流：body = API 格式 JSON 原文，?name=myflow&type=IMAGE|VIDEO&model=anima。
+     * model 为用户填写的模型名（必填，提示词优化 agent 做模型级优化用）。
+     * 失败（非 API 格式 / 无可填参数 / 类型或模型缺失）返回 200 + ok=false + problems，前端展示；
      * 模板名不合法等参数错误抛 400。
      */
     @PostMapping
     public WorkflowLibraryService.ImportReport importWorkflow(
             @RequestParam String name,
+            @RequestParam WorkflowType type,
+            @RequestParam(required = false) String model,
             @RequestBody byte[] content) throws IOException {
-        return library.importWorkflow(name, content);
+        return library.importWorkflow(name, type, model, content);
     }
 
-    /** 删除用户导入的模板。 */
+    /** 删除用户导入的模板（及其 meta sidecar）。 */
     @DeleteMapping("/{*name}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable String name) throws IOException {

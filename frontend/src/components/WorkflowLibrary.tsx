@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api, type WorkflowImportReport } from '@/lib/api'
+import { api, type WorkflowImportReport, type WorkflowType } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,26 +8,35 @@ import { Input } from '@/components/ui/input'
 import { Table, TBody, TD, TH, THead, TR } from '@/components/ui/table'
 import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/states'
 
+const SELECT_CLS =
+  'h-8 rounded-md border border-input bg-card px-2 text-sm ' +
+  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+
+const TYPE_LABEL: Record<WorkflowType, string> = { IMAGE: '图片', VIDEO: '视频' }
+
 /**
  * 工作流库页：列出内置/用户模板，上传导入 ComfyUI API 格式 JSON。
- * 导入管线在后端：校验 → 自动参数化 → 槽提取 → 2^k 剪枝自检 → 落盘（失败自动回滚）。
- * 注意：导入需要本机 ComfyUI 在线（节点类型经 /object_info 解析）。
+ * 导入管线在后端：按节点分组提取所有可人工填写的字面量参数（跳过连线）→
+ * 原文落盘 <name>.json + 解析元数据落盘 <name>.meta.json（失败自动回滚）。
+ * 纯 JSON 解析，不需要 ComfyUI 在线。
  */
 export default function WorkflowLibrary() {
   const qc = useQueryClient()
   const fileRef = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
+  const [type, setType] = useState<WorkflowType>('IMAGE')
+  const [model, setModel] = useState('')
   const [report, setReport] = useState<WorkflowImportReport | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
 
   const { data: entries, isLoading, error, refetch } = useQuery({
     queryKey: ['workflows'],
-    queryFn: api.workflows.list,
+    queryFn: () => api.workflows.list(),
   })
 
   const importMutation = useMutation({
-    mutationFn: async (vars: { name: string; content: string }) =>
-      api.workflows.import(vars.name, vars.content),
+    mutationFn: async (vars: { name: string; type: WorkflowType; model: string; content: string }) =>
+      api.workflows.import(vars.name, vars.type, vars.model, vars.content),
     onSuccess: (r) => {
       setReport(r)
       setFormError(null)
@@ -48,12 +57,23 @@ export default function WorkflowLibrary() {
   async function onFileChosen(file: File | undefined) {
     if (!file) return
     setFormError(null)
+    // 模型必填（提示词优化 agent 依赖它做模型级优化），未填先提示再清掉 input 便于重选
+    if (!model.trim()) {
+      setFormError('请先填写「模型」（该工作流使用的模型名）再选择文件')
+      if (fileRef.current) fileRef.current.value = ''
+      return
+    }
     // 默认模板名 = 文件名（去 .json）
     if (!name.trim()) {
       setName(file.name.replace(/\.json$/i, '').replace(/[^A-Za-z0-9_/-]/g, '_'))
     }
     const content = await file.text()
-    importMutation.mutate({ name: name.trim() || file.name.replace(/\.json$/i, ''), content })
+    importMutation.mutate({
+      name: name.trim() || file.name.replace(/\.json$/i, ''),
+      type,
+      model: model.trim(),
+      content,
+    })
   }
 
   return (
@@ -61,15 +81,39 @@ export default function WorkflowLibrary() {
       <Card>
         <CardHeader>
           <CardTitle>导入工作流</CardTitle>
-          <Badge tone="outline">需 ComfyUI 在线</Badge>
+          <Badge tone="outline">离线解析</Badge>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs leading-relaxed text-muted-foreground">
             在 ComfyUI 里把想要的流程全部填好（模型、尺寸、提示词随意），开启 Dev Mode 后用
-            「Save (API Format)」导出 JSON，再从这里上传。后端会自动参数化（seed/尺寸/提示词/首尾帧等）、
-            提取可选槽（LoRA、音频…）并做剪枝自检。
+            「Save (API Format)」导出 JSON，再从这里上传并填写类型（图片/视频）与模型名。
+            后端按节点分组提取所有可人工填写的字面量参数（跳过连线），生成时在审核台按元数据表单填值；
+            模型名供提示词优化 agent 做模型级优化。
           </p>
           <div className="flex flex-wrap items-end gap-2">
+            <label className="space-y-1">
+              <div className="text-2xs text-muted-foreground">类型</div>
+              <select
+                className={SELECT_CLS}
+                value={type}
+                onChange={(e) => setType(e.target.value as WorkflowType)}
+              >
+                <option value="IMAGE">图片</option>
+                <option value="VIDEO">视频</option>
+              </select>
+            </label>
+            <label className="space-y-1">
+              <div className="text-2xs text-muted-foreground">
+                模型 <span className="text-destructive">*</span>
+              </div>
+              <Input
+                className="w-44"
+                placeholder="如 anima / minimax_h3"
+                title="该工作流使用的模型名，提示词优化 agent 据此做模型级优化"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+              />
+            </label>
             <label className="space-y-1">
               <div className="text-2xs text-muted-foreground">
                 模板名（可带一层目录，如 sd/myflow）
@@ -89,7 +133,7 @@ export default function WorkflowLibrary() {
               onChange={(e) => onFileChosen(e.target.files?.[0])}
             />
             {importMutation.isPending && (
-              <span className="text-2xs text-muted-foreground">导入中（含剪枝自检，稍候）…</span>
+              <span className="text-2xs text-muted-foreground">导入中…</span>
             )}
           </div>
           {formError && <ErrorState message={formError} />}
@@ -114,39 +158,14 @@ export default function WorkflowLibrary() {
                 ))}
               </ul>
             )}
-            {report.slots.length > 0 && (
+            {report.ok && (
               <div className="flex flex-wrap items-center gap-1.5 text-xs">
-                <span className="text-muted-foreground">可选槽：</span>
-                {report.slots.map((s) => (
-                  <Badge key={s.name} tone="primary" className="font-mono">
-                    {s.name}:{s.type}({s.sourceKind})
-                  </Badge>
-                ))}
+                <Badge tone="primary">{TYPE_LABEL[report.type ?? 'IMAGE']}</Badge>
+                {report.model && <Badge tone="outline">{report.model}</Badge>}
+                <span className="text-muted-foreground">
+                  提取到 {report.nodeCount} 个节点 / {report.fieldCount} 个可填参数
+                </span>
               </div>
-            )}
-            {report.substitutions.length > 0 && (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted-foreground">
-                  自动参数化 {report.substitutions.length} 处
-                </summary>
-                <ul className="mt-1 list-disc pl-5 font-mono text-2xs">
-                  {report.substitutions.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </details>
-            )}
-            {report.notes.length > 0 && (
-              <details className="text-xs">
-                <summary className="cursor-pointer text-muted-foreground">
-                  备注 {report.notes.length} 条
-                </summary>
-                <ul className="mt-1 list-disc pl-5 text-2xs">
-                  {report.notes.map((s, i) => (
-                    <li key={i}>{s}</li>
-                  ))}
-                </ul>
-              </details>
             )}
           </CardContent>
         </Card>
@@ -167,17 +186,31 @@ export default function WorkflowLibrary() {
             <Table>
               <THead>
                 <TR>
-                  <TH className="w-[38%]">模板名</TH>
-                  <TH className="w-[10%]">来源</TH>
-                  <TH className="w-[32%]">可选槽</TH>
-                  <TH className="w-[14%]">导入时间</TH>
-                  <TH className="w-[6%]">操作</TH>
+                  <TH className="w-[30%]">模板名</TH>
+                  <TH className="w-[8%]">类型</TH>
+                  <TH className="w-[14%]">模型</TH>
+                  <TH className="w-[14%]">来源</TH>
+                  <TH className="w-[18%]">导入时间</TH>
+                  <TH className="w-[8%]">大小</TH>
+                  <TH className="w-[8%]">操作</TH>
                 </TR>
               </THead>
               <TBody>
                 {entries.map((e) => (
                   <TR key={e.source + ':' + e.name}>
                     <TD className="font-mono text-xs">{e.name}</TD>
+                    <TD>
+                      {e.type ? (
+                        <Badge tone={e.type === 'IMAGE' ? 'primary' : 'outline'}>
+                          {TYPE_LABEL[e.type]}
+                        </Badge>
+                      ) : (
+                        <span className="text-2xs text-muted-foreground">无元数据</span>
+                      )}
+                    </TD>
+                    <TD className="font-mono text-2xs">
+                      {e.model || <span className="text-muted-foreground">—</span>}
+                    </TD>
                     <TD>
                       <Badge tone={e.source === 'builtin' ? 'outline' : 'primary'}>
                         {e.source === 'builtin' ? '内置' : '用户导入'}
@@ -188,21 +221,11 @@ export default function WorkflowLibrary() {
                         </Badge>
                       )}
                     </TD>
-                    <TD>
-                      {e.slots.length === 0 ? (
-                        <span className="text-2xs text-muted-foreground">—</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {e.slots.map((s) => (
-                            <Badge key={s.name} className="font-mono">
-                              {s.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </TD>
                     <TD className="text-2xs text-muted-foreground">
                       {e.importedAt ? new Date(e.importedAt).toLocaleString() : '—'}
+                    </TD>
+                    <TD className="text-2xs text-muted-foreground">
+                      {e.bytes ? `${(e.bytes / 1024).toFixed(1)} KB` : '—'}
                     </TD>
                     <TD>
                       {e.source === 'user' && (

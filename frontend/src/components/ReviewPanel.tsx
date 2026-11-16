@@ -3,6 +3,10 @@ import { useState } from 'react'
 import { api } from '@/lib/api'
 import { useProgressEvents, type ProgressEventMsg } from '@/hooks/useProgressEvents'
 import DraftGate from '@/components/DraftGate'
+import WorkflowParamPanel, {
+  buildParams,
+  type WorkflowParamValue,
+} from '@/components/WorkflowParamPanel'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,17 +16,19 @@ import { EmptyState, ErrorState, SkeletonRows } from '@/components/ui/states'
 import type { ShotVersion } from '@/types/domain'
 
 const KIND_LABEL: Record<string, string> = {
-  FIRST_FRAME: '首帧',
+  FIRST_FRAME: '图片',
   VIDEO: '视频',
   TTS: '台词',
 }
 
 /**
- * 审核台（闸门②③）：某镜头的首帧图/视频版本列表 + 预览 + 通过/打回。
+ * 审核台（闸门②③）：某镜头的图片/视频版本列表 + 预览 + 通过/打回。
  * 生成进度经 WebSocket 实时更新；提交即返回，不阻塞页面。
  *
- * 首帧链：生成首帧 → 审核通过（后端把图提升进 ComfyUI input 并回填 firstFrameImage）
- * → 提交视频 → 视频审核通过 → 镜头 APPROVED。
+ * 生成参数模型：用户选择工作流（按 IMAGE/VIDEO 类型过滤）→ 面板按解析元数据
+ * 渲染参数表单（默认值 = 导入时的原值）→ 提交 {workflow, params: {jsonPath: value}}，
+ * 后端按 jsonPath 写回原始工作流并提交 ComfyUI。图生视频的图片地址由用户
+ * 直接填进视频工作流的 LoadImage 参数，后端不推导。
  */
 export default function ReviewPanel({ shotId }: { shotId: number }) {
   const qc = useQueryClient()
@@ -61,12 +67,28 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
     qc.invalidateQueries({ queryKey: ['shots'] })
   }
 
-  const genFirstFrame = useMutation({
-    mutationFn: () => api.generate.firstFrame(shotId),
+  // 工作流选择 + 参数表单（图片/视频各自独立）
+  const [imageWf, setImageWf] = useState<WorkflowParamValue>({ workflow: '', fields: {} })
+  const [videoWf, setVideoWf] = useState<WorkflowParamValue>({ workflow: '', fields: {} })
+  const { data: imageDetail } = useQuery({
+    queryKey: ['workflow-detail', imageWf.workflow],
+    queryFn: () => api.workflows.get(imageWf.workflow),
+    enabled: !!imageWf.workflow,
+  })
+  const { data: videoDetail } = useQuery({
+    queryKey: ['workflow-detail', videoWf.workflow],
+    queryFn: () => api.workflows.get(videoWf.workflow),
+    enabled: !!videoWf.workflow,
+  })
+
+  const genImage = useMutation({
+    mutationFn: () =>
+      api.generate.image(shotId, imageWf.workflow, buildParams(imageDetail, imageWf.fields) ?? {}),
     onSuccess: invalidateAll,
   })
   const genVideo = useMutation({
-    mutationFn: () => api.generate.video(shotId),
+    mutationFn: () =>
+      api.generate.video(shotId, videoWf.workflow, buildParams(videoDetail, videoWf.fields) ?? {}),
     onSuccess: invalidateAll,
   })
   const approve = useMutation({
@@ -84,7 +106,6 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
   const firstFrames = (versions ?? []).filter((v) => v.kind === 'FIRST_FRAME')
   const videos = (versions ?? []).filter((v) => v.kind === 'VIDEO')
   const anyGenerating = (versions ?? []).some((v) => v.genState === 'GENERATING')
-  const firstFrameApproved = shot?.firstFrameImage != null && shot.firstFrameImage !== ''
 
   return (
     <div className="space-y-4">
@@ -96,7 +117,7 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
         {shot && (
           <span className="text-2xs text-muted-foreground">
             {shot.state}
-            {shot.firstFrameImage ? ` · 首帧 ${shot.firstFrameImage}` : ''}
+            {shot.firstFrameImage ? ` · 图片入库 ${shot.firstFrameImage}` : ''}
           </span>
         )}
       </div>
@@ -104,25 +125,25 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
       {/* ──  提示词确认门（§6.3）── */}
       <DraftGate shotId={shotId} />
 
-      {/* ── 闸门②：首帧图 ── */}
+      {/* ── 闸门②：图片 ── */}
       <Card>
         <CardHeader>
-          <CardTitle>① 首帧图（闸门②）</CardTitle>
+          <CardTitle>① 图片（闸门②）</CardTitle>
           <Button
             variant="primary"
-            disabled={genFirstFrame.isPending || anyGenerating}
-            onClick={() => genFirstFrame.mutate()}
+            disabled={genImage.isPending || anyGenerating || !imageWf.workflow}
+            title={imageWf.workflow ? '' : '请先选择图片工作流'}
+            onClick={() => genImage.mutate()}
           >
-            {firstFrames.length === 0 ? '生成首帧' : '重roll首帧'}
+            {firstFrames.length === 0 ? '生成图片' : '重roll图片'}
           </Button>
         </CardHeader>
-        <CardContent>
-          {genFirstFrame.isError && (
-            <ErrorState className="mb-3" message={String(genFirstFrame.error)} />
-          )}
+        <CardContent className="space-y-3">
+          <WorkflowParamPanel type="IMAGE" value={imageWf} onChange={setImageWf} />
+          {genImage.isError && <ErrorState message={String(genImage.error)} />}
           {isLoading && <SkeletonRows rows={1} />}
           {!isLoading && firstFrames.length === 0 && (
-            <EmptyState title="尚未生成首帧图" className="py-6" />
+            <EmptyState title="尚未生成图片" className="py-6" />
           )}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             {firstFrames.map((v: ShotVersion) => (
@@ -158,22 +179,19 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
           <CardTitle>② 视频（闸门③）</CardTitle>
           <Button
             variant="primary"
-            disabled={genVideo.isPending || anyGenerating || !firstFrameApproved}
-            title={firstFrameApproved ? '' : '需先通过首帧审核'}
+            disabled={genVideo.isPending || anyGenerating || !videoWf.workflow}
+            title={videoWf.workflow ? '' : '请先选择视频工作流'}
             onClick={() => genVideo.mutate()}
           >
             {videos.length === 0 ? '提交视频生成' : '重roll视频'}
           </Button>
         </CardHeader>
-        <CardContent>
-          {!firstFrameApproved && (
-            <p className="mb-3 text-2xs text-muted-foreground">
-              首帧图通过审核后（闸门②）才能提交视频生成。
-            </p>
-          )}
-          {genVideo.isError && (
-            <ErrorState className="mb-3" message={String(genVideo.error)} />
-          )}
+        <CardContent className="space-y-3">
+          <p className="text-2xs text-muted-foreground">
+            图生视频：把已生成图片的路径直接填进视频工作流的图片参数（如 LoadImage.image）。
+          </p>
+          <WorkflowParamPanel type="VIDEO" value={videoWf} onChange={setVideoWf} />
+          {genVideo.isError && <ErrorState message={String(genVideo.error)} />}
           <div className="space-y-3">
             {videos.map((v: ShotVersion) => (
               <VersionCard
@@ -271,7 +289,7 @@ function VersionCard({
             <img
               className="mt-2 max-h-56 w-full rounded border object-contain bg-muted/40"
               src={`/media/comfy/${v.artifactPath}`}
-              alt={`首帧 v${v.versionNo}`}
+              alt={`图片 v${v.versionNo}`}
             />
           ) : (
             <video

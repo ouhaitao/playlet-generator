@@ -109,45 +109,64 @@ export const api = {
       }),
   },
   generate: {
-    /** 提交首帧图生成，立即返回 GENERATING 版本（异步）。 */
-    firstFrame: (shotId: number, opts?: { seed?: number; backend?: string }) =>
-      json<ShotVersion>(`/shots/${shotId}/generate-first-frame`, {
+    /** 提交图片生成（异步）。params 为 jsonPath → 值，按工作流解析元数据填写。 */
+    image: (shotId: number, workflow: string, params: Record<string, unknown>) =>
+      json<ShotVersion>(`/shots/${shotId}/generate-image`, {
         method: 'POST',
-        body: JSON.stringify(opts ?? {}),
+        body: JSON.stringify({ workflow, params }),
       }),
-    /** 提交视频生成，立即返回 GENERATING 版本（异步）。 */
-    video: (shotId: number, seed?: number) =>
+    /** 提交视频生成（异步）。图生视频的图片地址由用户填进 params。 */
+    video: (shotId: number, workflow: string, params: Record<string, unknown>) =>
       json<ShotVersion>(`/shots/${shotId}/generate-video`, {
         method: 'POST',
-        body: JSON.stringify(seed != null ? { seed } : {}),
+        body: JSON.stringify({ workflow, params }),
       }),
   },
   workflows: {
-    list: () => json<WorkflowEntry[]>('/workflows'),
+    list: (type?: WorkflowType) =>
+      json<WorkflowEntry[]>(type ? `/workflows?type=${type}` : '/workflows'),
     get: (name: string) => json<WorkflowDetail>(`/workflows/${name}`),
-    /** 导入：content 为 API 格式 JSON 原文（字符串）。ok=false 时 problems 有具体原因。 */
-    import: (name: string, content: string) =>
-      json<WorkflowImportReport>(`/workflows?name=${encodeURIComponent(name)}`, {
-        method: 'POST',
-        body: content,
-      }),
+    /** 导入：content 为 API 格式 JSON 原文（字符串），type 为 IMAGE/VIDEO，model 为模型名（必填）。
+     *  ok=false 时 problems 有具体原因。 */
+    import: (name: string, type: WorkflowType, model: string, content: string) =>
+      json<WorkflowImportReport>(
+        `/workflows?name=${encodeURIComponent(name)}&type=${type}&model=${encodeURIComponent(model)}`,
+        { method: 'POST', body: content },
+      ),
     remove: (name: string) =>
       json<void>(`/workflows/${name}`, { method: 'DELETE' }),
   },
 }
 
-/** 工作流模板库条目。 */
-export interface WorkflowSlotBrief {
-  name: string
-  type: string
-  sourceKind: 'source' | 'chain'
-  hostId: string
+/** 工作流类型枚举（图片 / 视频）。 */
+export type WorkflowType = 'IMAGE' | 'VIDEO'
+
+/** 工作流一个节点下可人工填写的字面量参数。 */
+export interface WorkflowFieldParam {
+  inputName: string
+  /** STRING / NUMBER / BOOLEAN */
+  kind: string
+  /** 写回路径，如 "3/inputs/seed"；提交生成时作为 params 的键 */
+  jsonPath: string
+  /** 导入时原始工作流中的默认值 */
+  defaultValue: string | number | boolean | null
+}
+
+/** 按节点分组的参数集合。 */
+export interface WorkflowNodeGroup {
+  nodeId: string
+  classType: string
+  nodeTitle: string
+  fields: WorkflowFieldParam[]
 }
 
 export interface WorkflowEntry {
   name: string
   source: 'builtin' | 'user'
-  slots: WorkflowSlotBrief[]
+  /** 无解析元数据（旧内置模板）时为 null，不可用于生成 */
+  type: WorkflowType | null
+  /** 导入时用户填写的模型名（提示词优化 agent 做模型级优化用） */
+  model: string | null
   importedAt: string | null
   bytes: number
   overridden: boolean
@@ -156,15 +175,18 @@ export interface WorkflowEntry {
 export interface WorkflowDetail {
   name: string
   source: 'builtin' | 'user'
-  slots: WorkflowSlotBrief[]
-  workflow: Record<string, unknown>
+  type: WorkflowType | null
+  model: string | null
+  importedAt: string | null
+  groups: WorkflowNodeGroup[]
 }
 
 export interface WorkflowImportReport {
   name: string
   ok: boolean
   problems: string[]
-  slots: WorkflowSlotBrief[]
-  substitutions: string[]
-  notes: string[]
+  type: WorkflowType | null
+  model: string | null
+  nodeCount: number
+  fieldCount: number
 }

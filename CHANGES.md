@@ -1,1 +1,3 @@
+- [2026-11-16] 工作流导入新增「模型」字段（必填，trim 落盘 meta，列表/详情/导入报告透出）：后续提示词优化 agent 依赖它做模型级专门优化，缺失即 fail-loud 拒绝导入。
+- [2026-11-16] 重写工作流导入器：只按节点提取可人工填写的字面量参数(跳过连线)，原文+元数据(.meta.json)落盘，加 IMAGE/VIDEO 枚举；后端统一为 DefaultGenerationBackend 按 jsonPath 写回原文后提交，弃用参数化/剪枝/多backend；审核台改为选工作流+填参数(generate-first-frame→generate-image)。
 - [2026-11-15] 修复 r2v 工作流导入失败：剪枝器对必填消费端无同类型链接可改接时（纯生产节点如共享 VAELoader）改为**钉住源节点**而非抛 PruneException，去留交孤儿 GC；并修 PrimitiveStringMultiline 误用 num: 前缀、MiniMaxH3ReferenceToVideo prompt 未参数化。保持 fail-loud（歧义仍拒绝）。

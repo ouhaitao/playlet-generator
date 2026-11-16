@@ -1,50 +1,43 @@
 package org.playlet.api.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
-import org.playlet.agent.PromptTranslator;
 import org.playlet.api.web.ProgressEvent;
 import org.playlet.api.web.ProgressEventPublisher;
-import org.playlet.comfyui.backend.GenerationBackend;
-import org.playlet.comfyui.backend.GenerationRequest;
+import org.playlet.comfyui.backend.DefaultGenerationBackend;
 import org.playlet.comfyui.backend.GenerationResult;
 import org.playlet.comfyui.client.ComfyProgressMonitor;
-import org.playlet.domain.entity.Project;
 import org.playlet.domain.entity.Shot;
 import org.playlet.domain.entity.ShotVersion;
-import org.playlet.domain.model.Capability;
-import org.playlet.domain.model.FirstFrameSource;
 import org.playlet.domain.model.ShotState;
 import org.playlet.domain.model.VersionKind;
 import org.playlet.domain.repo.ShotRepository;
 import org.playlet.domain.repo.ShotVersionRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 生成入口（主流程 ⑤ 首帧图生成 + ⑤b 视频生成），**异步非阻塞**。
+ * 生成入口（图片生成 + 视频生成），**异步非阻塞**。
+ *
+ * <p>参数模型：前端选定工作流（导入时已解析出元数据）并按元数据表单填写参数，
+ * 以 {@code {jsonPath: value}}（如 {@code "3/inputs/seed": 42}）提交。本服务只做
+ * 落库 + 交给 {@link DefaultGenerationBackend}（按 jsonPath 写回原始工作流 → 提交 ComfyUI），
+ * 不再推导/翻译任何参数——图片与视频走同一条通道，差异只在工作流本身。
  *
  * <p>流程：提交即返回（version.genState=GENERATING）→ 后台线程轮询 history 判定完成
  * （权威）→ 写产物/状态 → WebSocket 广播 completed/failed。ComfyUI /ws 的实时
  * progress 事件经 {@link ComfyProgressMonitor} 转发为百分比推送（WS 断开不影响正确性）。
- *
- * <p>只接受**已确认**的提示词（Shot.visualPrompt 由确认门写入，见 DESIGN.md §6.3）。
- * 槽位存的是给用户看的**中文**；提交后端前经 {@link PromptTranslator} 实时翻译成英文
- * （模型对中文支持差）。翻译只在提交时发生、对用户透明，手改/重优化不会使英文过期。
- * LLM 不可用时翻译直接抛异常、不降级（与 planner/optimizer 同一策略），本次生成失败。
  * 崩溃恢复：启动时把残留 GENERATING 行重新挂回轮询（ComfyUI history 仍在）。
- *
- * <p>首帧阶段：图后端由能力声明选出（supports TEXT_TO_IMAGE），默认取配置
- * {@code playlet.generation.default-image-backend}；产物审核后由 ReviewController
- * 提升进 ComfyUI input 目录并回填 Shot.firstFrameImage（闸门②）。
  */
 @Service
 public class GenerationService {
@@ -54,11 +47,10 @@ public class GenerationService {
 
     private final ShotRepository shots;
     private final ShotVersionRepository versions;
-    private final List<GenerationBackend> backends;
+    private final DefaultGenerationBackend backend;
     private final ProgressEventPublisher events;
     private final ComfyProgressMonitor monitor;
-    private final PromptTranslator translator;
-    private final String defaultImageBackend;
+    private final ObjectMapper json = new ObjectMapper();
     private final ExecutorService workers = Executors.newFixedThreadPool(2, r -> {
         Thread t = new Thread(r, "gen-worker");
         t.setDaemon(true);
@@ -66,18 +58,13 @@ public class GenerationService {
     });
 
     public GenerationService(ShotRepository shots, ShotVersionRepository versions,
-                             List<GenerationBackend> backends,
-                             ProgressEventPublisher events, ComfyProgressMonitor monitor,
-                             PromptTranslator translator,
-                             @Value("${playlet.generation.default-image-backend}")
-                             String defaultImageBackend) {
+                             DefaultGenerationBackend backend,
+                             ProgressEventPublisher events, ComfyProgressMonitor monitor) {
         this.shots = shots;
         this.versions = versions;
-        this.backends = backends;
+        this.backend = backend;
         this.events = events;
         this.monitor = monitor;
-        this.translator = translator;
-        this.defaultImageBackend = defaultImageBackend;
     }
 
     /** 崩溃恢复：残留 GENERATING 的版本重新挂回轮询。DB 不可用时不阻断启动。 */
@@ -90,10 +77,7 @@ public class GenerationService {
             for (ShotVersion v : stuck) {
                 log.info("recovering interrupted generation: version={} promptId={}",
                         v.getId(), v.getComfyPromptId());
-                GenerationBackend backend = backendFor(v.getBackend());
-                if (backend != null) {
-                    watch(v.getId(), v.getShot().getId(), v.getComfyPromptId(), backend);
-                }
+                watch(v.getId(), v.getShot().getId(), v.getComfyPromptId());
             }
             if (!stuck.isEmpty()) {
                 log.info("recovered {} interrupted generation(s)", stuck.size());
@@ -103,159 +87,82 @@ public class GenerationService {
         }
     }
 
-    /** 提交视频生成，立即返回 GENERATING 状态的版本。 */
+    /**
+     * 提交图片生成，立即返回 GENERATING 版本。
+     *
+     * @param workflow 已导入的工作流名（type=IMAGE）
+     * @param params   jsonPath → 值（用户在审核台按解析元数据填写）
+     */
     @Transactional
-    public ShotVersion generateVideo(Long shotId, Long seedOverride) {
-        Shot shot = shots.findById(shotId)
-                .orElseThrow(() -> new IllegalArgumentException("shot not found: " + shotId));
-        Project project = shot.getProject();
-
-        GenerationBackend backend = backendFor(
-                shot.getVideoModel() != null ? shot.getVideoModel() : project.getVideoModel());
-        if (backend == null) {
-            throw new IllegalArgumentException("no backend for model: " + project.getVideoModel());
-        }
-        if (shot.getVisualPrompt() == null || shot.getVisualPrompt().isBlank()) {
-            throw new IllegalStateException(
-                    "shot " + shotId + " 的 visualPrompt 为空——提示词须经确认门写入后才能生成（§6.3）");
-        }
-        // 闸门②前置：REFERENCE 来源的镜头必须先有**审核通过**的首帧图
-        //（approve 时由 ReviewController 提升进 ComfyUI input 并回填 firstFrameImage）
-        if (shot.getFirstFrameSource() == FirstFrameSource.REFERENCE
-                && (shot.getFirstFrameImage() == null || shot.getFirstFrameImage().isBlank())) {
-            throw new IllegalStateException(
-                    "shot " + shotId + " 尚无已审核通过的首帧图——请先生成首帧并通过闸门②（§7 L4：改视频不如改首帧）");
-        }
-
-        Long seed = seedOverride;
-        // 提交前把中文提示词翻译成英文（模型对中文支持差）。LLM 不可用即抛异常、不降级——
-        // 中文原样下发只会出垃圾图，宁可让本次生成失败把问题暴露出来。
-        String enPrompt = translator.toEnglish(shot.getVisualPrompt());
-        GenerationRequest req = GenerationRequest.video(
-                enPrompt, shot.getDurationSec(), project.getAspectRatio(),
-                shot.getFirstFrameImage(), seed, project.isAudioNative(),
-                negativeExtra(shot, translator));
-
-        String promptId = backend.submit(req);
-
-        int nextNo = versions.findByShot_IdOrderByVersionNoAsc(shotId).size() + 1;
-        ShotVersion version = new ShotVersion();
-        version.setShot(shot);
-        version.setVersionNo(nextNo);
-        version.setKind(VersionKind.VIDEO);
-        version.setBackend(backend.id());
-        version.setPrompt(shot.getVisualPrompt());
-        version.setSeed(seed);
-        version.setComfyPromptId(promptId);
-        version.setGenState("GENERATING");
-        version.setReviewState("PENDING");
-        version.setCreatedAt(LocalDateTime.now().format(TS));
-        versions.save(version);
-
-        shot.setState(ShotState.VIDEO_GENERATING);
-        shots.save(shot);
-
-        watch(version.getId(), shotId, promptId, backend);
-        events.publish(ProgressEvent.started(version.getId(), shotId, promptId));
-        return version;
+    public ShotVersion generateImage(Long shotId, String workflow, Map<String, Object> params) {
+        return submit(shotId, workflow, params, VersionKind.FIRST_FRAME);
     }
 
     /**
-     * 提交首帧图生成（主流程 ⑤），立即返回 GENERATING 版本。
-     * 图后端按能力声明选择（supports TEXT_TO_IMAGE），id 可显式指定（ANIMA/ILLUSTRIOUS）。
+     * 提交视频生成，立即返回 GENERATING 版本。
+     * 图生视频所需的图片地址由用户直接填进工作流参数（如 LoadImage.image），后端不推导。
+     *
+     * @param workflow 已导入的工作流名（type=VIDEO）
+     * @param params   jsonPath → 值
      */
     @Transactional
-    public ShotVersion generateFirstFrame(Long shotId, Long seedOverride, String backendId) {
+    public ShotVersion generateVideo(Long shotId, String workflow, Map<String, Object> params) {
+        return submit(shotId, workflow, params, VersionKind.VIDEO);
+    }
+
+    private ShotVersion submit(Long shotId, String workflow, Map<String, Object> params,
+                               VersionKind kind) {
         Shot shot = shots.findById(shotId)
                 .orElseThrow(() -> new IllegalArgumentException("shot not found: " + shotId));
-        Project project = shot.getProject();
-
-        GenerationBackend backend = imageBackend(backendId);
-        if (shot.getVisualPrompt() == null || shot.getVisualPrompt().isBlank()) {
-            throw new IllegalStateException(
-                    "shot " + shotId + " 的 visualPrompt 为空——提示词须经确认门写入后才能生成（§6.3）");
+        if (workflow == null || workflow.isBlank()) {
+            throw new IllegalArgumentException("workflow 必填（先在工作流库导入并在审核台选择）");
         }
         if (shot.getState() == ShotState.FIRST_FRAME_GENERATING
                 || shot.getState() == ShotState.VIDEO_GENERATING) {
             throw new IllegalStateException("shot " + shotId + " 正在生成中（" + shot.getState() + "），请稍候");
         }
+        Map<String, Object> safeParams = params == null ? Map.of() : params;
 
-        int[] wh = resolveImageSize(project);
-        // 提交前把中文提示词翻译成英文（模型对中文支持差）。LLM 不可用即抛异常、不降级。
-        String enPrompt = translator.toEnglish(shot.getVisualPrompt());
-        GenerationRequest req = GenerationRequest.image(
-                enPrompt, wh[0], wh[1], seedOverride, negativeExtra(shot, translator));
-        String promptId = backend.submit(req);
+        String promptId = backend.submit(workflow, safeParams);
 
         int nextNo = versions.findByShot_IdOrderByVersionNoAsc(shotId).size() + 1;
         ShotVersion version = new ShotVersion();
         version.setShot(shot);
         version.setVersionNo(nextNo);
-        version.setKind(VersionKind.FIRST_FRAME);
+        version.setKind(kind);
         version.setBackend(backend.id());
-        version.setPrompt(shot.getVisualPrompt());
-        version.setSeed(seedOverride);
+        version.setParamsJson(toParamsJson(workflow, safeParams));
         version.setComfyPromptId(promptId);
         version.setGenState("GENERATING");
         version.setReviewState("PENDING");
         version.setCreatedAt(LocalDateTime.now().format(TS));
         versions.save(version);
 
-        shot.setState(ShotState.FIRST_FRAME_GENERATING);
+        shot.setState(kind == VersionKind.FIRST_FRAME
+                ? ShotState.FIRST_FRAME_GENERATING : ShotState.VIDEO_GENERATING);
         shots.save(shot);
 
-        watch(version.getId(), shotId, promptId, backend);
+        watch(version.getId(), shotId, promptId);
         events.publish(ProgressEvent.started(version.getId(), shotId, promptId));
         return version;
     }
 
-    /** 图后端：显式 id 优先；默认配置 id；再兜底 = 第一个支持 TEXT_TO_IMAGE 的后端。 */
-    private GenerationBackend imageBackend(String backendId) {
-        String id = backendId == null || backendId.isBlank() ? defaultImageBackend : backendId.trim();
-        GenerationBackend b = backendFor(id);
-        if (b != null && b.supports(Capability.TEXT_TO_IMAGE)) {
-            return b;
+    /** 参数留档：{workflow, params}（可回溯可复现）。序列化失败不阻断生成。 */
+    private String toParamsJson(String workflow, Map<String, Object> params) {
+        Map<String, Object> doc = new LinkedHashMap<>();
+        doc.put("workflow", workflow);
+        doc.put("params", params);
+        try {
+            String s = json.writeValueAsString(doc);
+            return s.length() > 8000 ? s.substring(0, 8000) : s;
+        } catch (Exception e) {
+            log.warn("serialize params failed: {}", e.getMessage());
+            return null;
         }
-        if (b != null) {
-            throw new IllegalArgumentException("后端 " + id + " 不支持文生图（TEXT_TO_IMAGE）");
-        }
-        return backends.stream()
-                .filter(x -> x.supports(Capability.TEXT_TO_IMAGE))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "没有可用的图像后端（配置 playlet.generation.default-image-backend=" + id
-                                + "，且无后端声明 TEXT_TO_IMAGE）"));
-    }
-
-    /**
-     * 首帧图分辨率：项目显式分辨率优先；否则按画幅映射到常见基准。
-     * anima/illustrious 模板 width/height 均为占位符，必须有值。
-     */
-    /** 已确认的负向提示 → extraParams（SD 系图像后端消费 negative 键；视频后端忽略）。
-     *  与正向提示词一样，中文负向提示同样翻译成英文后再下发。 */
-    private static java.util.Map<String, Object> negativeExtra(Shot shot, PromptTranslator translator) {
-        String neg = shot.getNegativePrompt();
-        return neg == null || neg.isBlank()
-                ? java.util.Map.of()
-                : java.util.Map.of("negative", translator.toEnglish(neg));
-    }
-
-    private int[] resolveImageSize(Project project) {
-        if (project.getResolutionW() != null && project.getResolutionH() != null) {
-            return new int[]{project.getResolutionW(), project.getResolutionH()};
-        }
-        String ratio = project.getAspectRatio() == null ? "9:16" : project.getAspectRatio();
-        return switch (ratio) {
-            case "16:9" -> new int[]{1344, 768};
-            case "1:1" -> new int[]{1024, 1024};
-            case "3:4" -> new int[]{896, 1152};
-            case "4:3" -> new int[]{1152, 896};
-            default -> new int[]{768, 1344}; // 9:16 竖屏短剧
-        };
     }
 
     /** 后台监听某次生成：WS 进度转发 + history 轮询判定完成。 */
-    private void watch(Long versionId, Long shotId, String promptId, GenerationBackend backend) {
+    private void watch(Long versionId, Long shotId, String promptId) {
         monitor.listen(promptId, new ComfyProgressMonitor.Listener() {
             @Override
             public void onProgress(double percent) {
@@ -298,7 +205,7 @@ public class GenerationService {
         versions.save(v);
 
         Shot shot = v.getShot();
-        // 闸门②/③：产物就绪 → 进入对应待审状态（首帧图审核通过后才回填 firstFrameImage）
+        // 闸门②/③：产物就绪 → 进入对应待审状态（图片审核通过后才回填 firstFrameImage）
         shot.setState(v.getKind() == VersionKind.FIRST_FRAME
                 ? ShotState.FIRST_FRAME_REVIEW
                 : ShotState.VIDEO_REVIEW);
@@ -319,17 +226,13 @@ public class GenerationService {
         versions.save(v);
 
         Shot shot = v.getShot();
-        // 回退到可重试状态：已有通过审核的首帧图 → 停在首帧待审（可直接重发视频）；
-        // 否则 → PENDING（可重发首帧）
+        // 回退到可重试状态：已有通过审核的图片 → 停在图片待审（可直接重发视频）；
+        // 否则 → PENDING（可重发图片）
         shot.setState(shot.getFirstFrameImage() != null && !shot.getFirstFrameImage().isBlank()
                 ? ShotState.FIRST_FRAME_REVIEW
                 : ShotState.PENDING);
         shots.save(shot);
 
         events.publish(ProgressEvent.failed(versionId, shot.getId(), v.getComfyPromptId(), message));
-    }
-
-    private GenerationBackend backendFor(String id) {
-        return backends.stream().filter(b -> b.id().equals(id)).findFirst().orElse(null);
     }
 }

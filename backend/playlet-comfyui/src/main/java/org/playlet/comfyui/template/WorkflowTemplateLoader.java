@@ -80,6 +80,19 @@ public class WorkflowTemplateLoader {
         }
     }
 
+    /** 读模板的解析元数据 sidecar（&lt;name&gt;.meta.json）；不存在返回 null。 */
+    public WorkflowMeta loadMeta(String templateName) {
+        try {
+            JsonNode sidecar = readTreeOrNull(templateName, ".meta.json");
+            if (sidecar == null) {
+                return null;
+            }
+            return json.readValue(json.treeAsTokens(sidecar), WorkflowMeta.class);
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to read meta for " + templateName, e);
+        }
+    }
+
     private JsonNode readTree(String templateName, String suffix) throws IOException {
         JsonNode node = readTreeOrNull(templateName, suffix);
         if (node == null) {

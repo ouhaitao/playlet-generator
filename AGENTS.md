@@ -1,5 +1,10 @@
 # playlet-generator Guide
 
+## Coding Rules
+
+* **Plan Before Coding**: For user requirements, you MUST first output a concise implementation plan (including affected files and core logic changes). Then, STOP and wait for the user's explicit approval (e.g., "Proceed") before writing or modifying any code.
+* **Ask, Don't Guess**: If you encounter critical missing context, ambiguous business logic, or any information that could lead to destructive changes, it is **mandatory** to ask the user for clarification. Do NOT make assumptions.
+
 ## Project Layout
 
 ### Backend
@@ -29,7 +34,7 @@
 * `CHANGES_ARCHIVED.md` is for archive purposes only. **Reading this document directly is FORBIDDEN.**
 
 ## Delivery Standards
-After you finish writing the code for a feature module and it passes testing, in addition to updating `CHANGES.md`, you **MUST** update the following two core documents in sync. Keep the content concise:
+After you finish writing the code for a feature module, and it passes testing, in addition to updating `CHANGES.md`, you **MUST** update the following two core documents in sync. Keep the content concise:
 
 1. **Update Interface Contract (`docs/api/${controllerClassName}.md`)**:
    - Extract the newly added/modified interface signatures, API paths, and request/response parameters (expressed as JSON Schema or simple request/response examples).
@@ -45,7 +50,10 @@ After you finish writing the code for a feature module and it passes testing, in
    - **Path Resolution**:
      - `${group}` is `backend` if the modified file is under the `backend/` directory, otherwise `frontend`.
      - If `${group}` is `backend`, `${module}` is the name of the top-level submodule directory (e.g., `playlet-api`, `playlet-agent`).
-     - If `${group}` is `frontend`, ignore `${module}` (the path is just `docs/frontend/moduleMap.md`).
+     - If `${group}` is `frontend`: ALWAYS use the single file `docs/frontend/moduleMap.md`. Do NOT create sub-module maps.
+   - **Frontend Specifics**:
+     - Only record files in `src/components/` (top-level), `src/hooks/`, `src/lib/`, and `src/types/`.
+     - **FORBIDDEN** to list files inside `src/components/ui/`.
 
 **Exemption Rule:** If the change is only a typo fix, formatting adjustment, or pure internal refactor (no interface signature or file responsibility changes), you may skip these two document updates and only record it in `CHANGES.md`.
 

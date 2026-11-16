@@ -47,7 +47,7 @@ playlet:
     poll-interval-ms: 1500
     timeout-seconds: 3600
 
-  # ffmpeg 可执行文件路径（不在 PATH 上也能用；见 DESIGN.md §10.7）
+  # ffmpeg bin目录
   ffmpeg:
     path: ${PLAYLET_FFMPEG_PATH}
 
