@@ -9,9 +9,7 @@ import org.playlet.domain.entity.Project;
 import org.playlet.domain.entity.PromptDraft;
 import org.playlet.domain.entity.Scene;
 import org.playlet.domain.entity.Shot;
-import org.playlet.domain.model.FirstFrameSource;
-import org.playlet.domain.model.ProjectMode;
-import org.playlet.domain.model.ShotState;
+import org.playlet.domain.model.*;
 import org.playlet.domain.repo.CharacterRefRepository;
 import org.playlet.domain.repo.ProjectRepository;
 import org.playlet.domain.repo.PromptDraftRepository;
@@ -208,15 +206,19 @@ public class StoryboardService {
         for (Shot s : all) {
             PromptDraft latest = drafts
                     .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
-                            "SHOT", s.getId(), "visual_prompt")
+                        PromptDraftOwnerType.SHOT.name, s.getId(), PromptDraftFieldName.VISUAL_PROMPT.name)
                     .orElse(null);
             if (latest == null) {
                 // 无草稿：槽位已有内容视作已定稿（手工建的镜头），否则补一轮优化再确认
                 if (s.getVisualPrompt() == null || s.getVisualPrompt().isBlank()) {
-                    gate.optimize("SHOT", s.getId(), "visual_prompt", null);
+                    PromptDraft promptDraft = new PromptDraft();
+                    promptDraft.setOwnerType(PromptDraftOwnerType.SHOT.name);
+                    promptDraft.setOwnerId(s.getId());
+                    promptDraft.setFieldName(PromptDraftFieldName.VISUAL_PROMPT.name);
+                    gate.optimize(promptDraft);
                     latest = drafts
                             .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
-                                    "SHOT", s.getId(), "visual_prompt").orElse(null);
+                                PromptDraftOwnerType.SHOT.name, s.getId(), PromptDraftFieldName.VISUAL_PROMPT.name).orElse(null);
                 }
             }
             if (latest != null && "DRAFT".equals(latest.getState())) {
@@ -268,7 +270,7 @@ public class StoryboardService {
     private Row toRow(Shot s) {
         PromptDraft latest = drafts
                 .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
-                        "SHOT", s.getId(), "visual_prompt")
+                    PromptDraftOwnerType.SHOT.name, s.getId(), PromptDraftFieldName.VISUAL_PROMPT.name)
                 .orElse(null);
         boolean confirmed = latest == null
                 ? s.getVisualPrompt() != null && !s.getVisualPrompt().isBlank()

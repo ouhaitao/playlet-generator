@@ -1,5 +1,7 @@
 package org.playlet.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.Data;
 import org.playlet.domain.model.ReviewDecision;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,6 +18,7 @@ import jakarta.persistence.Table;
 /** 审核动作：通过 / 重生成 / 回退改分镜。 */
 @Entity
 @Table(name = "review")
+@Data
 public class Review {
 
     @Id
@@ -24,6 +27,7 @@ public class Review {
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "shot_version_id")
+    @JsonIgnore
     private ShotVersion shotVersion;
 
     @Enumerated(EnumType.STRING)
@@ -39,18 +43,4 @@ public class Review {
     @Column(nullable = false, length = 32)
     private String createdAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public ShotVersion getShotVersion() { return shotVersion; }
-    public Long getShotVersionId() { return shotVersion == null ? null : shotVersion.getId(); }
-    public void setShotVersion(ShotVersion shotVersion) { this.shotVersion = shotVersion; }
-    public ReviewDecision getDecision() { return decision; }
-    public void setDecision(ReviewDecision decision) { this.decision = decision; }
-    public String getFeedback() { return feedback; }
-    public void setFeedback(String feedback) { this.feedback = feedback; }
-    public Integer getRegenLevel() { return regenLevel; }
-    public void setRegenLevel(Integer regenLevel) { this.regenLevel = regenLevel; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

@@ -1,5 +1,6 @@
 package org.playlet.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -9,6 +10,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Data;
 
 /**
  * 角色。参考图来源三选一：预生成角色库 / 用户上传 / ComfyUI 生成。
@@ -16,6 +18,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "character")
+@Data
 public class CharacterRef {
 
     @Id
@@ -24,6 +27,7 @@ public class CharacterRef {
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "project_id")
+    @JsonIgnore
     private Project project;
 
     @Column(nullable = false, length = 100)
@@ -47,22 +51,4 @@ public class CharacterRef {
     @Column(nullable = false, length = 32)
     private String createdAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public Project getProject() { return project; }
-    public Long getProjectId() { return project == null ? null : project.getId(); }
-    public void setProject(Project project) { this.project = project; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getAppearance() { return appearance; }
-    public void setAppearance(String appearance) { this.appearance = appearance; }
-    public String getReferenceImage() { return referenceImage; }
-    public void setReferenceImage(String referenceImage) { this.referenceImage = referenceImage; }
-    public String getRefSource() { return refSource; }
-    public void setRefSource(String refSource) { this.refSource = refSource; }
-    public String getVoiceKey() { return voiceKey; }
-    public void setVoiceKey(String voiceKey) { this.voiceKey = voiceKey; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

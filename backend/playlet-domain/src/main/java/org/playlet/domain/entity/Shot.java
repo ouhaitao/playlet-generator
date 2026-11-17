@@ -1,5 +1,7 @@
 package org.playlet.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.Data;
 import org.playlet.domain.model.FirstFrameSource;
 import org.playlet.domain.model.ShotState;
 import jakarta.persistence.Column;
@@ -23,6 +25,7 @@ import java.util.List;
  */
 @Entity
 @Table(name = "shot")
+@Data
 public class Shot {
 
     @Id
@@ -31,6 +34,7 @@ public class Shot {
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "project_id")
+    @JsonIgnore
     private Project project;
 
     @Column(nullable = false)
@@ -52,6 +56,7 @@ public class Shot {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "scene_id")
+    @JsonIgnore
     private Scene scene;
 
     /** 选填：无台词 = 纯画面镜头 */
@@ -60,6 +65,7 @@ public class Shot {
 
     @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "speaker_id")
+    @JsonIgnore
     private CharacterRef speaker;
 
     @Column(length = 24)
@@ -87,56 +93,14 @@ public class Shot {
     @JoinTable(name = "shot_character",
             joinColumns = @JoinColumn(name = "shot_id"),
             inverseJoinColumns = @JoinColumn(name = "character_id"))
+    @JsonIgnore
     private List<CharacterRef> characters = new ArrayList<>();
 
     @Column(nullable = false, length = 32)
     private String createdAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public Project getProject() { return project; }
-    public void setProject(Project project) { this.project = project; }
-    public Long getProjectId() { return project == null ? null : project.getId(); }
-    public int getOrd() { return ord; }
-    public void setOrd(int ord) { this.ord = ord; }
-    public String getVisualPrompt() { return visualPrompt; }
-    public void setVisualPrompt(String visualPrompt) { this.visualPrompt = visualPrompt; }
-    public double getDurationSec() { return durationSec; }
-    public void setDurationSec(double durationSec) { this.durationSec = durationSec; }
-    public FirstFrameSource getFirstFrameSource() { return firstFrameSource; }
-    public void setFirstFrameSource(FirstFrameSource firstFrameSource) { this.firstFrameSource = firstFrameSource; }
-    public String getVideoModel() { return videoModel; }
-    public void setVideoModel(String videoModel) { this.videoModel = videoModel; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public Scene getScene() { return scene; }
-    public void setScene(Scene scene) { this.scene = scene; }
-    public Long getSceneId() { return scene == null ? null : scene.getId(); }
-    public String getDialogue() { return dialogue; }
-    public void setDialogue(String dialogue) { this.dialogue = dialogue; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public CharacterRef getSpeaker() { return speaker; }
-    public void setSpeaker(CharacterRef speaker) { this.speaker = speaker; }
-    public Long getSpeakerId() { return speaker == null ? null : speaker.getId(); }
-    public String getShotSize() { return shotSize; }
-    public void setShotSize(String shotSize) { this.shotSize = shotSize; }
-    public String getCameraMove() { return cameraMove; }
-    public void setCameraMove(String cameraMove) { this.cameraMove = cameraMove; }
-    public String getSfxNote() { return sfxNote; }
-    public void setSfxNote(String sfxNote) { this.sfxNote = sfxNote; }
-    public String getFirstFrameImage() { return firstFrameImage; }
-    public void setFirstFrameImage(String firstFrameImage) { this.firstFrameImage = firstFrameImage; }
-    public String getNegativePrompt() { return negativePrompt; }
-    public void setNegativePrompt(String negativePrompt) { this.negativePrompt = negativePrompt; }
-    public ShotState getState() { return state; }
-    public void setState(ShotState state) { this.state = state; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public List<CharacterRef> getCharacters() { return characters; }
-    public void setCharacters(List<CharacterRef> characters) { this.characters = characters; }
     public List<Long> getCharacterIds() {
         return characters == null ? List.of()
                 : characters.stream().map(CharacterRef::getId).toList();
     }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

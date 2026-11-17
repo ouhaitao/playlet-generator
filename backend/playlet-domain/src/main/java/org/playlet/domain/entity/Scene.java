@@ -1,5 +1,6 @@
 package org.playlet.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -9,10 +10,12 @@ import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
+import lombok.Data;
 
 /** 场景。纯人物特写镜头可无场景参考图。 */
 @Entity
 @Table(name = "scene")
+@Data
 public class Scene {
 
     @Id
@@ -21,6 +24,7 @@ public class Scene {
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "project_id")
+    @JsonIgnore
     private Project project;
 
     @Column(nullable = false, length = 100)
@@ -39,20 +43,4 @@ public class Scene {
     @Column(nullable = false, length = 32)
     private String createdAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public Project getProject() { return project; }
-    public Long getProjectId() { return project == null ? null : project.getId(); }
-    public void setProject(Project project) { this.project = project; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
-    public String getReferenceImage() { return referenceImage; }
-    public void setReferenceImage(String referenceImage) { this.referenceImage = referenceImage; }
-    public String getRefSource() { return refSource; }
-    public void setRefSource(String refSource) { this.refSource = refSource; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }

@@ -41,7 +41,7 @@ public class PromptOptimizer {
                     + "ugly, duplicate, morbid, out of frame";
 
     private static final String SYSTEM_PROMPT = """
-            你是短剧生成平台的提示词优化 agent。把用户的粗糙画面描述优化为图像/视频生成模型可用的提示词。
+            你是短剧生成平台的提示词优化 agent。把用户的粗糙画面描述优化为图像/视频生成模型可用的 **英文提示词**。
 
             规则：
             1. 保留用户描述的全部语义要素（人物、动作、环境、情绪），不得删改剧情含义。

@@ -40,9 +40,8 @@ public class DraftController {
      * body: {"ownerType": "SHOT", "ownerId": 1, "fieldName": "visual_prompt", "feedback": "可空"}
      */
     @PostMapping("/optimize")
-    public PromptDraft optimize(@RequestBody Map<String, Object> body) {
-        return gate.optimize(str(body, "ownerType"), num(body, "ownerId"),
-                str(body, "fieldName"), str(body, "feedback"));
+    public PromptDraft optimize(@RequestBody PromptDraft promptDraft) {
+        return gate.optimize(promptDraft);
     }
 
     /**

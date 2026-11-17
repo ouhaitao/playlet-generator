@@ -1,5 +1,7 @@
 package org.playlet.domain.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import lombok.Data;
 import org.playlet.domain.model.VersionKind;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -18,6 +20,7 @@ import jakarta.persistence.Table;
  */
 @Entity
 @Table(name = "shot_version")
+@Data
 public class ShotVersion {
 
     @Id
@@ -26,6 +29,7 @@ public class ShotVersion {
 
     @ManyToOne(fetch = FetchType.EAGER, optional = false)
     @JoinColumn(name = "shot_id")
+    @JsonIgnore
     private Shot shot;
 
     @Column(nullable = false)
@@ -77,40 +81,4 @@ public class ShotVersion {
     @Column(nullable = false, length = 32)
     private String createdAt;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    @com.fasterxml.jackson.annotation.JsonIgnore
-    public Shot getShot() { return shot; }
-    public void setShot(Shot shot) { this.shot = shot; }
-    public Long getShotId() { return shot == null ? null : shot.getId(); }
-    public int getVersionNo() { return versionNo; }
-    public void setVersionNo(int versionNo) { this.versionNo = versionNo; }
-    public VersionKind getKind() { return kind; }
-    public void setKind(VersionKind kind) { this.kind = kind; }
-    public String getBackend() { return backend; }
-    public void setBackend(String backend) { this.backend = backend; }
-    public String getPrompt() { return prompt; }
-    public void setPrompt(String prompt) { this.prompt = prompt; }
-    public Long getSeed() { return seed; }
-    public void setSeed(Long seed) { this.seed = seed; }
-    public String getParamsJson() { return paramsJson; }
-    public void setParamsJson(String paramsJson) { this.paramsJson = paramsJson; }
-    public String getArtifactPath() { return artifactPath; }
-    public void setArtifactPath(String artifactPath) { this.artifactPath = artifactPath; }
-    public String getComfyPromptId() { return comfyPromptId; }
-    public void setComfyPromptId(String comfyPromptId) { this.comfyPromptId = comfyPromptId; }
-    public String getGenState() { return genState; }
-    public void setGenState(String genState) { this.genState = genState; }
-    public String getErrorMessage() { return errorMessage; }
-    public void setErrorMessage(String errorMessage) { this.errorMessage = errorMessage; }
-    public Double getDurationSec() { return durationSec; }
-    public void setDurationSec(Double durationSec) { this.durationSec = durationSec; }
-    public String getReviewState() { return reviewState; }
-    public void setReviewState(String reviewState) { this.reviewState = reviewState; }
-    public String getRejectReason() { return rejectReason; }
-    public void setRejectReason(String rejectReason) { this.rejectReason = rejectReason; }
-    public Integer getRegenLevel() { return regenLevel; }
-    public void setRegenLevel(Integer regenLevel) { this.regenLevel = regenLevel; }
-    public String getCreatedAt() { return createdAt; }
-    public void setCreatedAt(String createdAt) { this.createdAt = createdAt; }
 }
