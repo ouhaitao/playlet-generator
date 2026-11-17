@@ -10,7 +10,7 @@
 $env:Path = (Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Environment').Path + ';' + (Get-ItemProperty 'HKCU:\Environment').Path + ';' + $env:Path
 
 # 后端：离线测试（排除需要真实 ComfyUI/LLM 的 spike）
-mvn -B -f ${playlet-generator}\backend\pom.xml test '-Dtest=!H3VideoSpikeTest,!AnimaImageGenerationTest,!ComfyClientSpikeTest,!RealWorkflowImportTest,!WorkflowImportCliTest' '-Dsurefire.failIfNoSpecifiedTests=false'
+mvn -B -f ${playlet-generator}\backend\pom.xml test '-Dtest=!ComfyClientSpikeTest,!WorkflowImportCliTest' '-Dsurefire.failIfNoSpecifiedTests=false'
 
 # 后端：跑应用前必须整 reactor install（坑 #6），再单模块 spring-boot:run
 mvn -B -f ${playlet-generator}\backend\pom.xml install -DskipTests

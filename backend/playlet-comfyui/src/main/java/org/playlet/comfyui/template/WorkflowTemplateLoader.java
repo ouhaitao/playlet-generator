@@ -66,19 +66,19 @@ public class WorkflowTemplateLoader {
         }
     }
 
-    /** 读模板的 sidecar 槽位清单；不存在返回空。 */
-    public List<WorkflowSlot> loadSlots(String templateName) {
-        try {
-            JsonNode sidecar = readTreeOrNull(templateName, ".options.json");
-            if (sidecar == null) {
-                return List.of();
-            }
-            return json.readValue(json.treeAsTokens(sidecar),
-                    json.getTypeFactory().constructCollectionType(List.class, WorkflowSlot.class));
-        } catch (IOException e) {
-            throw new IllegalStateException("failed to read sidecar for " + templateName, e);
-        }
-    }
+//    /** 读模板的 sidecar 槽位清单；不存在返回空。 */
+//    public List<WorkflowSlot> loadSlots(String templateName) {
+//        try {
+//            JsonNode sidecar = readTreeOrNull(templateName, ".options.json");
+//            if (sidecar == null) {
+//                return List.of();
+//            }
+//            return json.readValue(json.treeAsTokens(sidecar),
+//                    json.getTypeFactory().constructCollectionType(List.class, WorkflowSlot.class));
+//        } catch (IOException e) {
+//            throw new IllegalStateException("failed to read sidecar for " + templateName, e);
+//        }
+//    }
 
     /** 读模板的解析元数据 sidecar（&lt;name&gt;.meta.json）；不存在返回 null。 */
     public WorkflowMeta loadMeta(String templateName) {

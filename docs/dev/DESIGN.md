@@ -1,20 +1,5 @@
 # 短剧生成平台 —— 设计文档
 
-> 状态：设计已评审，待进入编码。本文档是讨论成果的固化，不含代码。
-> 最后更新：2026-10-30（第 2 轮修订：删除 QQbot 方案、确立能力声明式适配器架构、补全槽位表与音频分层）
-
-## 0.0 配套流程图
-
-`docs/diagrams/` 下三张图（DOT 源码 + PNG + SVG，用仓库内 Graphviz 渲染）：
-
-| 图 | 文件 | 内容 |
-|---|---|---|
-| 图 1 | `flow-1-main-pipeline` | 端到端主流程与三道人工闸门（对应 §6.2） |
-| 图 2 | `flow-2-adapter-capability` | 能力声明式适配器四层架构（对应 §4） |
-| 图 3 | `flow-3-review-loop` | 审核—重生成循环与 L1~L5 分级（对应 §7） |
-
-重新渲染：`dot -Tpng <name>.dot -o <name>.png`（另出 `-Tsvg`）。`_check_layout.py` 解析 SVG 校验节点/标签重叠，改动 DOT 后跑一遍。
-
 ## 0. 一句话概述
 
 一个**单用户**的短剧生成平台：用户用自然语言描述剧情，agent 通过多轮对话补全"项目简报"并产出**分镜表**，再逐镜头驱动 ComfyUI 生成首帧图与视频，**每段人工审核通过后再生成下一段**，最后由后端 ffmpeg 合成为带字幕、配音、BGM 的成品。
@@ -24,29 +9,10 @@
 | 约束 | 结论 | 带来的简化 |
 |---|---|---|
 | 部署形态 | **外网部署**（playlet-generator + ComfyUI 都在外网）；单用户（用户本人） | **无鉴权、无多租户、无用户体系**，配置写死单用户 |
-| 交互端 | 仅 Web 端 | 审核界面只在 Web 做，无需处理 QQ 发图/发视频的媒体接口限制 |
-| LLM 位置 | **LLM 在内网**，内网可自由访问公网，但**严格监管、不能做反向隧道** | ComfyUI 在外网本地直连，只有 LLM 需要跨网 |
+| 交互端 | 仅 Web 端 | 审核界面只在 Web 做 |
 | LLM 接入 | **只保留 OpenAI 兼容接口一种方案**，base-url 可切换 | `LlmClient` 只需一个实现 |
 | 生成节奏 | 串行：审完第 N 段才生成第 N+1 段 | 状态机以"当前活跃镜头"为核心，逻辑简单 |
 | 一致性方案 | 预生成角色库 + 用户上传参考图 + ComfyUI 工作流生成参考图 | 不训练 LoRA，靠参考图驱动 |
-
-## 2. 环境事实（已侦察核实）
-
-- **可用生成能力**（当前多为 UI 图格式，尚未导出 API 格式）：
-
-  | 环节 | 工作流 / 节点 | 状态 |
-  |---|---|---|
-  | 文生图（角色/场景/海报） | flux2_klein_text_to_image、hidream_o1_dev | 未提取 |
-  | 参考图编辑（换装/换景/修脸） | flux2_klein_image_edit | 未提取 |
-  | 文生视频 | wan2.2_14B_t2v、MiniMax H3 T2V | 未提取 |
-  | 图生视频（首帧驱动） | wan2.2-ti2v、MiniMax H3 I2V | 未提取 |
-  | **首尾帧生视频**（一镜到底关键） | `MinimaxHailuo03FirstLastFrameNode` | 仅 H3 有 |
-  | 多图参考生视频（一致性） | `MiniMaxH3ReferenceToVideo`（`<Picture i>`/`<Video k>`/`<Audio j>` 标签） | 仅 H3 有 |
-  | 控制视频（姿态/深度） | `Wan22FunControlToVideo` | 仅 Wan2.2 有 |
-  | **联合音视频 latent** | `EmptyMiniMaxH3LatentAV`（video+audio，24fps，时长对齐 17k+5 帧网格） | 仅 H3 有 |
-  | 画质修复/放大 | SeedVR2_upscale | ✅ 已提取 |
-  | 台词/旁白配音（含音色克隆库） | TTS-Audio-Suite 自定义节点 | 已装 |
-  | 合成/转场/字幕 | 不走 ComfyUI，后端 ffmpeg 实现 | 待开发 |
 
 ## 3. 技术选型（已核实版本，已拍板）
 
@@ -73,177 +39,10 @@
 - **密度**：紧凑工具风（正文 13px、元信息 11px `text-2xs`、控件 24/28/32px、表格行 28px）。
 - **M1 闭环后的视觉精修清单（契约，勿漏项）**：①原生控件替换（file dropzone、Select、Switch）；②微交互（hover elevation/过渡/按压态）；③排版层级（字重/字距节奏）；④去边框化、底色分层+阴影阶；⑤状态语言（StatusDot/左侧色条/时间线）；⑥媒体衬底（MediaFrame：中性底+固定宽高比+圆角内衬）；⑦品牌锚点（logo mark + 主色点缀）。目标级别："干净的专业工具"（Linear/Raycast 式克制精致），不做营销式华丽；顺带产出开源 README 截图。
 
-## 4. 架构：统一主流程 + 能力声明式适配器
+## 4. ComfyUI工作流模板
 
-### 4.1 决策依据
-
-对比过两种实现方式：①主流程通用、模型差异作为额外配置；②每个模型定制一套流程。**选①，但不是朴素版本**。
-
-**②为什么不行**：主流程里真正与模型相关的只有"提交生成任务"一个环节。其余（对话填槽、分镜表、审核循环、版本管理、ffmpeg 合成、字幕、混音、Web UI）全部与模型无关。为 N 个模型复制 N 套，意味着改一次审核状态机要改 N 处；而视频模型快速迭代（H3 刚出、Wan2.2、还有新的），定制流程追不上。
-
-**朴素①的风险**：若抽象设计成"最低公分母"，模型特有能力会被浪费。
-
-**决定性证据**：`MinimaxHailuo03FirstLastFrameNode` 支持首帧+尾帧双约束，Wan2.2 无对应节点。对一镜到底模式：H3 可做双约束续接（接缝质量高、漂移可控），Wan2.2 只能"上一段末帧当下一段首帧"（单侧约束、漂移更快）。硬编码任一方都会让另一个模型跑不了或浪费能力。同类差异还有 H3 的联合音视频 latent、SigmaShift（video/audio flow shift 分开调）、标签式多参考，以及 Wan2.2 的 FunControlToVideo。
-
-### 4.2 四层结构
-
-```
-① 主流程层（模型无关）
-   Project/Shot/Version/Review 状态机、分镜表、审核循环、ffmpeg 合成
-        ↓ 只发抽象请求："给我 5s 图生视频，首帧=X，提示词=Y"
-② 能力层 Capability（每个后端声明自己支持什么）
-        ↓ 决定哪些阶段启用、哪些槽位对用户可见
-③ 适配器层 Adapter（每个后端一个实现）
-   把抽象请求翻译成具体 ComfyUI API-JSON；模型差异全部封死在这里
-        ↓
-④ 工作流模板层（参数化 API-JSON，属适配器的实现细节）
-```
-
-模块划分：
-
-```
-domain      领域模型与状态机：项目/角色/场景/分镜(Shot)/镜头版本(Version)/审核(Review)
-llm-spi     LlmClient 接口 + OpenAiCompatibleLlmClient（唯一实现，base-url 可切），如果llm不可用则直接报错
-agent       槽位填充编排：多轮对话 → 项目简报 → 分镜表
-comfyui     ComfyClient(直连原生 API)
-            GenerationBackend 接口（能力声明 + 抽象生成请求 → API-JSON）
-            ├─ MiniMaxH3Backend
-            ├─ Wan22Backend
-            └─ SeedVR2Backend（修复放大）
-            WorkflowTemplate 模板库（参数化 API-JSON）
-media       ffmpeg 合成、三层音频混音、TTS 编排、字幕生成
-api         REST + WebSocket
-web         前端 SPA
-```
-
-### 4.3 能力声明（Capability）
-
-每个生成后端声明其能力集合，**主流程通过询问能力来决定行为，绝不硬编码模型名**：
-
-| 能力 | 含义 | H3 | Wan2.2 |
-|---|---|---|---|
-| `IMAGE_TO_VIDEO` | 首帧图生视频 | ✅ | ✅ |
-| `TEXT_TO_VIDEO` | 文生视频 | ✅ | ✅ |
-| `FIRST_LAST_FRAME` | 首尾帧双约束 | ✅ | ❌ |
-| `NATIVE_AUDIO` | 视频自带音频 | ✅ | ❌ |
-| `AUDIO_REFERENCE` | 音频参考条件 | ✅ | ❌ |
-| `REFERENCE_TO_VIDEO` | 多图参考生视频 | ✅ | ❌ |
-| `CONTROL_VIDEO` | 姿态/深度控制 | ❌ | ✅ |
-| `MAX_DURATION_SEC` | 单次最大时长 | 待实测 | 待实测 |
-| `FRAME_GRID` | 时长对齐约束 | 17k+5 帧 @24fps | 无 |
-| `SUPPORTED_ASPECT_RATIOS` | 支持画幅 | 待实测 | 待实测 |
-
-### 4.4 能力门控的阶段（capability-gated phases）
-
-阶段序列统一，**启用哪些阶段由能力决定**：
-
-| 阶段 | 启用条件 |
-|---|---|
-| 首帧图生成 | 通用，恒启用 |
-| 视频生成 | 通用，恒启用 |
-| **尾帧约束** | 仅 `supports(FIRST_LAST_FRAME)` → H3 启用，Wan2.2 自动跳过 |
-| **原生音频处理** | 仅 `supports(NATIVE_AUDIO)` → H3 启用 |
-| 画质修复放大 | 项目级开关（SeedVR2） |
-| 台词 TTS | 仅该镜有台词 |
-
-结果：一套状态机、一套审核循环、一套 UI；H3 发挥首尾帧与原生音频，Wan2.2 走单帧路径，两者都不被拉平、也不被复制。
-
-### 4.5 模型额外配置的落点
-
-1. **能力驱动 UI**：选了 H3，分镜表才出现"尾帧""原生音频"槽位；选 Wan2.2 则不显示。用户看不到不适用的选项，也填不出非法组合。
-2. **扩展参数兜底**：适配器暴露 `extra_params`（JSON），装模型私有旋钮（如 H3 的 video/audio 两个 sigma shift 值）。主流程原样透传，不理解也不校验。
-3. **校验在适配器内**：如 H3 时长须对齐帧网格、Wan2.2 不支持原生音频——提交前由适配器校验并给明确错误，不污染主流程。
-
-**可拓展性验收标准**：新增一个视频模型 = 写一个适配器 + 声明能力 + 放工作流模板，**主流程与前端零改动**。
-
-### 4.7 工作流模板：全填版 + sidecar 清单 + 提交前剪枝
-
-ComfyUI 导出的 API-JSON 里所有值都是**硬编码**的。平台复用需要两层机制，各管一个维度：
-
-| 维度 | 机制 | 例 |
-|---|---|---|
-| **值是什么**（每次生成都变） | 占位符替换 | prompt、seed、duration、first_frame 文件名 |
-| **结构在不在**（可选配置开/关） | 提交前剪枝 | 首帧连不连、尾帧连不连、LoRA 开不开、原生音频要不要 |
-
-**导出规范：每个工作流只导一份"全填版"**——所有链接型可选输入都连上、值型旋钮填合理默认。
-组合数不再变成文件数（废弃早期的"多模板变体"方案）。
-
-**占位符语法**（`WorkflowTemplateLoader`，剪枝**之后**替换）：
-
-| 语法 | 含义 | 例 |
-|---|---|---|
-| `{{name}}` | 字符串替换 | `{{prompt}}`、`{{first_frame}}`、`{{aspect_ratio}}`、`{{prefix}}` |
-| `{{num:name}}` | 数字替换（含小数点为浮点，否则整数） | `{{num:seed}}`、`{{num:duration}}`、`{{num:width}}` |
-| `{{bool:name}}` | 布尔替换 | `{{bool:upscale}}` |
-
-**标准占位符名**（适配器按名取值）：
-
-| 占位符 | 对应节点输入 |
-|---|---|
-| `prompt` / `negative` | 正向/负向提示词（CLIPTextEncode.text 或 H3 的 prompt） |
-| `first_frame` / `last_frame` | LoadImage.image（首/尾帧） |
-| `num:seed` | RandomNoise.noise_seed / KSampler.seed |
-| `num:duration` | 时长秒（PrimitiveFloat.value 等） |
-| `num:width` / `num:height` | EmptyLatentImage 宽高 |
-| `num:steps` / `num:cfg` | 采样步数 / CFG（选填旋钮） |
-| `aspect_ratio` | ResolutionSelector.aspect_ratio（COMBO 选项文本） |
-| `prefix` | SaveImage/SaveVideo.filename_prefix |
-
-**sidecar 清单（`<name>.options.json`）**：导入时由 `WorkflowImporter` 从**这份 JSON 现场解析**
-自动生成，与模板成对存放（重导即重解析，清单不手写、不单独维护）。只收**链接型可选输入**；
-值型旋钮（steps/cfg/strength）不进清单——不提供值即保留导出默认（占位符机制覆盖）。
-清单条目：`name / hostId / inputName / sourceId / sourceOutput / type / sourceKind`。
-H3 实测清单：`audio(chain)`、`first_frame(source)`——**原生音频也是可选链接输入**，
-"静音视频"= 关 audio 槽，§8 的三层音频开关由此统一进剪枝机制。
-
-**剪枝算法（`WorkflowPruner`，消费端为中心）**：关闭槽 = 关闭其源节点 C。
-1. 遍历 C 每个输出槽的每个消费端 (H, I)（H 已在删除集则跳过）：
-   - I 在 H 上是**可选**输入 → 删除该链接（如 first_frame 关）；
-   - I 在 H 上是**必填**输入 → **旁路改接**：H.inputs[I] 改指向 C 的同类型输入链接
-     （如 LoRA 关：host.model→unet、host.clip→clip）。同类型输入链接不唯一即**拒绝**，不猜；
-   - I 必填但 C 上**无**同类型输入链接可改接（纯生产节点，如与必填解码链共享的 VAELoader）
-     → **钉住 C**：保留该必填链接、不删 C，只断开被关槽位自己的可选链接。这不是猜——图保持
-     原样即合法，C 的去留交给孤儿 GC（r2v 的 vae/audio_vae 槽由此可导入：VAELoader 同时喂
-     ref2v 可选 vae 与 VAEDecode 必填 vae，关掉可选侧后 VAELoader 被解码链钉住）。
-2. 删除 C（未被钉住时）。
-3. **孤儿 GC**（先旁路/钉住后 GC）：无消费端且非 output_node 的节点迭代删净
-   （如 LoadImage 上游的 ImageScale 传递性删除；关 audio+audio_vae 后 audio VAELoader 失消费端被删）。
-共享同一源节点的多个槽是**耦合组**：关其一即关整个源（LoRA 的 model/clip 双输出同理）。
-
-**能力声明数据驱动**：清单里有 `last_frame` 槽才声明 `FIRST_LAST_FRAME`、有 `audio` 槽才声明
-`NATIVE_AUDIO`——"以模板实际能跑为准"从约定变成机器事实，适配器不再手写能力集合。
-
-**导入流程**（`WorkflowImporter`，当前以测试形式运行：
-`mvn test -Dtest=WorkflowImportCliTest "-Dimport.template=<路径>"`）：
-1. ComfyUI Dev Mode → Save (API Format) 导出**全填版**；
-2. 结构自检（链接完整 / required 齐备 / 无悬空 / 无孤儿；`COMFY_AUTOGROW_V3` 动态自增输入豁免）；
-3. 提取 sidecar 清单；
-4. **2^k 组合剪枝自检**（k≤4，每组合剪一遍再自检）；任一步失败即拒绝导入并列出问题；
-5. 写 sidecar 与参数化后的工作流（**导入器原地落盘**）。占位符由
-   `WorkflowParameterizer` 规则引擎自动完成（信号：生态命名约定 / multiline+拓扑定正负 /
-   加载保存节点规则 / Primitive 源节点沿开关与数学表达式追踪命名（开关极性规则：
-   经 on_false 生效的汇点名才是名字）/ 开关名由 on_true 分支源节点类推导 / LoRA 类节点规则），
-   已是占位符的值跳过（幂等）；工作流级常量（模型名/采样器等）保持硬编码并列入报告信息区。
-   规则未覆盖的节点类不猜：导入报告中列出，人工确认后补规则。
-
-**安全网**：导入时 2^k 自检为主力；`POST /prompt` 的 node_errors 为最后防线（校验不过不执行）。
-剪枝器即使有漏网 bug，表现是响亮报错，不是坏视频。
-
-**开关常量折叠（值型可选配置，与剪枝互补）**：部分工作流（anima / illustrious）的可选配置
-不是"可选链接输入"而是 **`ComfySwitchNode` + 布尔值**（链接常连，switch 值决定走哪条分支），
-如 LoRA 开/关、img2img 开/关、宽高交换。处理机制：
-1. 开关走**布尔占位符** `{{bool:lora}}` / `{{bool:img2img}}` / `{{bool:swap}}`，适配器按请求注入
-   （lora = extraParams.lora_name 非空；img2img = firstFrameImage 非空；swap 恒 false）；
-2. 占位符替换**之后**调 `WorkflowPruner.foldConstantSwitches`：switch 为字面量布尔的开关节点，
-   其消费端直连选中分支（true→on_true / false→on_false），删除开关节点；
-3. 孤儿 GC：**未选中分支上仅被开关引用的节点随之删除**——关闭的 LoRA 加载器不再进入提交，
-   其 `lora_name`（本地可能不存在该文件）不触发校验，`lora=false` 时本地无 LoRA 也能提交；
-   `lora=true` 而文件缺失时由 ComfyUI 提交校验响亮拒绝（fail-loud，预期）。
-switch 输入仍为链接（非常量）时不折叠，保持原样。
-
-### 4.6 额外收益：模型可逐镜混用（v1 预留）
-
-`video_model` 是 **Shot 级字段**（非项目级硬绑定）。v1 只接 H3，该字段暂只有一个可选值；架构上保留逐镜混用能力——M2 接入第二个后端后，可以大部分镜头用画质优先模型、一镜到底的续接镜头用 H3 的首尾帧；审核不满意时"换模型重roll"也构成重生成分级的一个新维度（L3，v1 预留）。
+ComfyUI的节点成千上万，并且还在持续增加，想要完全灵活解析工作流是根本做不到的，所以工作流模板由用户导入。
+工作流的参数在主流程中由用户填写，填写完毕后由后端将参数写回原始工作流，然后提交comfyUI生成。
 
 ## 5. 领域模型（分镜/一镜到底统一为"镜头序列"）
 

@@ -30,7 +30,7 @@
 
 ## Docs
 * `CHANGES.md` records the **5 most recent changes**. After delivering a feature, you **MUST** prepend a brief summary of the changes to the beginning of this document, using the format: `- [YYYY-MM-DD] Core change content (note the reason if it involves architectural decisions)`, and keep it **under 50 words**.
-* This document holds a **maximum of 5 records**. If a new record exceeds this limit, you **MUST automatically** move the oldest record to the top of `docs/dev/CHANGES_ARCHIVED.md`.
+* This document holds a **maximum of 5 records**. If a new record exceeds this limit, you **MUST automatically** move the oldest record to the top of `CHANGES_ARCHIVED.md`.
 * `CHANGES_ARCHIVED.md` is for archive purposes only. **Reading this document directly is FORBIDDEN.**
 
 ## Delivery Standards
