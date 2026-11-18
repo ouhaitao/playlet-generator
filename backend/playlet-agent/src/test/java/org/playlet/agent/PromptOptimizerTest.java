@@ -161,6 +161,73 @@ class PromptOptimizerTest {
 //        assertThat(fake.store).doesNotContain(first);
 //        assertThat(fake.store).contains(second);
 //    }
+
+    // ── generatePromptText（审核台「生成提示词」，无状态即席能力）──
+
+    @Test
+    void generatePromptText_buildsSingleMessage_andReturnsLlmOutput() {
+        FakeDraftRepo fake = new FakeDraftRepo();
+        List<String> messages = new ArrayList<>();
+        LlmClient capturing = new LlmClient() {
+            @Override
+            public String complete(String systemPrompt, String userMessage) {
+                messages.add(userMessage);
+                return "```text\n1girl, rain, neon lights\n```";
+            }
+
+            @Override
+            public String complete(List<ChatMessage> history, String userMessage) {
+                throw new AssertionError("应走单轮接口");
+            }
+        };
+        PromptOptimizer opt = new PromptOptimizer(capturing, mockRepo(fake));
+
+        String out = opt.generatePromptText("anima", "1girl, rain", "正面", "手部崩坏");
+
+        // 输出仅去 markdown 包裹，不落库
+        assertThat(out).isEqualTo("1girl, rain, neon lights");
+        assertThat(fake.store).isEmpty();
+        // 四个字段都进了那一条消息
+        assertThat(messages).hasSize(1);
+        assertThat(messages.get(0))
+                .contains("anima").contains("正面").contains("1girl, rain").contains("手部崩坏");
+    }
+
+    @Test
+    void generatePromptText_nullFields_usePlaceholders() {
+        FakeDraftRepo fake = new FakeDraftRepo();
+        List<String> messages = new ArrayList<>();
+        PromptOptimizer opt = new PromptOptimizer(new LlmClient() {
+            @Override
+            public String complete(String systemPrompt, String userMessage) {
+                messages.add(userMessage);
+                return "generated prompt";
+            }
+
+            @Override
+            public String complete(List<ChatMessage> history, String userMessage) {
+                throw new AssertionError("应走单轮接口");
+            }
+        }, mockRepo(fake));
+
+        assertThat(opt.generatePromptText(null, null, null, null)).isEqualTo("generated prompt");
+        assertThat(messages.get(0))
+                .contains("未知").contains("未指定").contains("从零生成").contains("（无）");
+    }
+
+    @Test
+    void generatePromptText_llmDown_throws() {
+        PromptOptimizer opt = new PromptOptimizer(llmFailing(), mockRepo(new FakeDraftRepo()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> opt.generatePromptText("anima", "x", "正面", null));
+    }
+
+    @Test
+    void generatePromptText_blankOutput_throws() {
+        PromptOptimizer opt = new PromptOptimizer(llmReturning("   "), mockRepo(new FakeDraftRepo()));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class,
+                () -> opt.generatePromptText("anima", "x", "正面", null));
+    }
 //
 //    @Test
 //    void confirmedDraftSurvivesReOptimize() {

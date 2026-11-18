@@ -1,5 +1,6 @@
 import type { Project, Shot, ShotVersion, PromptDraft, CharacterRef, Scene,
-  StoryboardRow, StoryboardGenerateResult, StoryboardConfirmResult, ComposeResult } from '@/types/domain'
+  StoryboardRow, StoryboardGenerateResult, StoryboardConfirmResult, StoryboardAddShotSpec,
+  ComposeResult } from '@/types/domain'
 
 /** 后端 REST 客户端。开发期经 Vite proxy 转发到 :8080。 */
 const BASE = '/api'
@@ -71,6 +72,12 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ feedback }),
       }),
+    /** 翻译提示词（审核台 CLIPTextEncode 输入框用）；结果仅展示，不落库。 */
+    translate: (text: string, target: 'EN' | 'ZH') =>
+      json<{ translated: string }>(`/drafts/translate`, {
+        method: 'POST',
+        body: JSON.stringify({ text, target }),
+      }),
   },
   storyboard: {
     /** 梗概 → 切镜 → 逐镜出草稿 → 整表返回。 */
@@ -91,6 +98,12 @@ export const api = {
       json<StoryboardRow>(`/projects/${projectId}/storyboard/shots/${shotId}/prompt`, {
         method: 'POST',
         body: JSON.stringify({ content }),
+      }),
+    /** 手动添加分镜（用户填参，提示词直接写槽、不产草稿）。 */
+    addShot: (projectId: number, spec: Partial<StoryboardAddShotSpec>) =>
+      json<StoryboardRow>(`/projects/${projectId}/storyboard/shots`, {
+        method: 'POST',
+        body: JSON.stringify(spec),
       }),
   },
   characters: {
@@ -120,6 +133,14 @@ export const api = {
       json<ShotVersion>(`/shots/${shotId}/generate-video`, {
         method: 'POST',
         body: JSON.stringify({ workflow, params }),
+      }),
+  },
+  prompt: {
+    /** 生成提示词（审核台「生成提示词」按钮）：纯能力接口，不落库、不关联业务。 */
+    generate: (vars: { model?: string | null; content?: string; flag: string; feedback?: string }) =>
+      json<{ result: string }>(`/prompt/generate`, {
+        method: 'POST',
+        body: JSON.stringify(vars),
       }),
   },
   workflows: {

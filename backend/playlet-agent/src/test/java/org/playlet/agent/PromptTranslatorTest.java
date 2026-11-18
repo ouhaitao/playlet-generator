@@ -140,4 +140,59 @@ class PromptTranslatorTest {
         assertThat(PromptTranslator.containsCjk("ひらがなカタカナ")).isFalse(); // 纯假名不在 CJK 表意区
         assertThat(PromptTranslator.containsCjk(null)).isFalse();
     }
+
+    // ── toChinese（审核台「提示词翻译成中文」）──────────────────
+
+    @Test
+    void englishTranslatedToChineseByLlm() {
+        PromptTranslator t = new PromptTranslator(llmReturning("赛博朋克, 中景, 两个人在雨里吵架"));
+        assertThat(t.toChinese("cyberpunk, medium shot, two people arguing in the rain"))
+                .isEqualTo("赛博朋克, 中景, 两个人在雨里吵架");
+    }
+
+    @Test
+    void alreadyChinese_skipsLlmForToChinese() {
+        AtomicInteger calls = new AtomicInteger();
+        PromptTranslator t = new PromptTranslator(new LlmClient() {
+            @Override
+            public String complete(String systemPrompt, String userMessage) {
+                calls.incrementAndGet();
+                return "should not be used";
+            }
+
+            @Override
+            public String complete(List<ChatMessage> history, String userMessage) {
+                calls.incrementAndGet();
+                return "should not be used";
+            }
+        });
+        assertThat(t.toChinese("雨夜霓虹, 中景")).isEqualTo("雨夜霓虹, 中景");
+        assertThat(t.toChinese(null)).isNull();
+        assertThat(t.toChinese("   ")).isEqualTo("   ");
+        assertThat(calls).hasValue(0);
+    }
+
+    @Test
+    void toChinese_llmUnavailable_throws() {
+        PromptTranslator t = new PromptTranslator(llmFailing());
+        assertThatThrownBy(() -> t.toChinese("rainy night, neon"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("提示词翻译失败")
+                .hasMessageContaining("LLM 不可用");
+    }
+
+    @Test
+    void toChinese_llmReturnsNoChinese_throws() {
+        PromptTranslator t = new PromptTranslator(llmReturning("still english output"));
+        assertThatThrownBy(() -> t.toChinese("rainy night"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("输出不含中文");
+    }
+
+    @Test
+    void containsLatin_detectsEnglishLetters() {
+        assertThat(PromptTranslator.containsLatin("rainy night, 9:16")).isTrue();
+        assertThat(PromptTranslator.containsLatin("雨夜霓虹")).isFalse();
+        assertThat(PromptTranslator.containsLatin(null)).isFalse();
+    }
 }

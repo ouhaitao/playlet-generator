@@ -22,3 +22,20 @@ Response `200`：`ShotVersion`（`genState=GENERATING`，`backend=DEFAULT`，`pa
 ## POST /api/shots/{shotId}/generate-video
 
 触发镜头视频生成。Request / Response 同 `generate-image`（`workflow` 为 type=VIDEO 的工作流）。
+
+## POST /api/prompt/generate
+
+生成提示词（审核台「生成提示词」按钮）。把四个字段构造成**一条消息**发 LLM（能力：`PromptOptimizer.generatePromptText`），原样返回输出文本。**纯能力接口，无业务耦合**：不落库、不产草稿、不写槽位。
+
+Request Body：
+
+```json
+{ "model": "anima",              // 工作流元信息的模型名，可空（空→"未知"）
+  "content": "1girl, rain",       // CLIPTextEncode 输入框当前内容，可空（空→从零生成）
+  "flag": "正面",                 // 提示词标识（正面/负面），必填
+  "feedback": "手部崩坏" }        // 用户反馈意见，可空
+```
+
+Response `200`：`{ "result": "优化后的提示词文本" }`。
+
+`flag` 缺失 → `400`；LLM 不可用 / 返回空输出 → `400 { "message": "提示词生成失败…" }`。

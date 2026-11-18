@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
-import { CheckCheck, Clapperboard, Pencil, Sparkles } from 'lucide-react'
+import { CheckCheck, Clapperboard, Pencil, Plus, Sparkles } from 'lucide-react'
 import { api } from '@/lib/api'
+import ShotAddDialog from '@/components/ShotAddDialog'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +16,7 @@ import type { StoryboardRow } from '@/types/domain'
  * 梗概 → 切镜（LLM/回退切句）→ 整表展示（序/时长/景别/运镜/草稿状态）
  * → 批量确认（逐镜确认草稿写槽）/ 逐行改（改 → 新草稿 → 再确认）
  * → 全部确认后项目状态推进 STORYBOARD_CONFIRMED。
+ * 也支持「手动加分镜」（ShotAddDialog）：参数用户自填，提示词直接写槽、不产草稿。
  *
  * 提示词双语约定：本页展示/编辑的一律是**中文**提示词（给用户看的）；
  * 生成图片/视频时由后端 PromptTranslator 在提交前实时翻译成英文（给模型用的），
@@ -24,6 +26,7 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
   const qc = useQueryClient()
   const [editing, setEditing] = useState<number | null>(null)
   const [editText, setEditText] = useState('')
+  const [addOpen, setAddOpen] = useState(false)
 
   const { data: rows, isLoading, error, refetch } = useQuery({
     queryKey: ['storyboard', projectId],
@@ -120,6 +123,14 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
               {list.length === 0 ? '自动切镜' : '重新切镜'}
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setAddOpen(true)}
+              title="手动添加分镜（参数自填，不走 LLM）"
+            >
+              <Plus size={13} /> 手动加分镜
+            </Button>
+            <Button
               variant="success"
               size="sm"
               disabled={confirmAll.isPending || list.length === 0 || allConfirmed}
@@ -159,7 +170,15 @@ export default function StoryboardConfirm({ projectId }: { projectId: number }) 
       {!isLoading && list.length === 0 && !error && (
         <EmptyState
           title="暂无分镜"
-          hint="点上方「自动切镜」：按剧情梗概切出镜头表，每镜自动生成提示词草稿供确认。"
+          hint="点上方「自动切镜」：按剧情梗概切出镜头表，每镜自动生成提示词草稿供确认。也可「手动加分镜」自行填写。"
+        />
+      )}
+
+      {addOpen && (
+        <ShotAddDialog
+          projectId={projectId}
+          onAdded={() => setAddOpen(false)}
+          onClose={() => setAddOpen(false)}
         />
       )}
 

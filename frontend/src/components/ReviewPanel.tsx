@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import { useProgressEvents, type ProgressEventMsg } from '@/hooks/useProgressEvents'
 import DraftGate from '@/components/DraftGate'
+import PromptFieldTools from '@/components/PromptFieldTools'
+import WorkflowReadonlyView from '@/components/WorkflowReadonlyView'
 import WorkflowParamPanel, {
   buildParams,
   type WorkflowParamValue,
@@ -139,7 +141,24 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
           </Button>
         </CardHeader>
         <CardContent className="space-y-3">
-          <WorkflowParamPanel type="IMAGE" value={imageWf} onChange={setImageWf} />
+          <WorkflowParamPanel
+            type="IMAGE"
+            value={imageWf}
+            onChange={setImageWf}
+            renderFieldExtra={(f, g) =>
+              g.classType === 'CLIPTextEncode' && f.kind === 'STRING' ? (
+                <PromptFieldTools
+                  value={typeof imageWf.fields[f.jsonPath] === 'string' ? (imageWf.fields[f.jsonPath] as string) : ''}
+                  onChange={(v) =>
+                    setImageWf((prev) => ({ ...prev, fields: { ...prev.fields, [f.jsonPath]: v } }))
+                  }
+                  shot={shot}
+                  model={imageDetail?.model}
+                  versions={firstFrames}
+                />
+              ) : null
+            }
+          />
           {genImage.isError && <ErrorState message={String(genImage.error)} />}
           {isLoading && <SkeletonRows rows={1} />}
           {!isLoading && firstFrames.length === 0 && (
@@ -190,7 +209,24 @@ export default function ReviewPanel({ shotId }: { shotId: number }) {
           <p className="text-2xs text-muted-foreground">
             图生视频：把已生成图片的路径直接填进视频工作流的图片参数（如 LoadImage.image）。
           </p>
-          <WorkflowParamPanel type="VIDEO" value={videoWf} onChange={setVideoWf} />
+          <WorkflowParamPanel
+            type="VIDEO"
+            value={videoWf}
+            onChange={setVideoWf}
+            renderFieldExtra={(f, g) =>
+              g.classType === 'CLIPTextEncode' && f.kind === 'STRING' ? (
+                <PromptFieldTools
+                  value={typeof videoWf.fields[f.jsonPath] === 'string' ? (videoWf.fields[f.jsonPath] as string) : ''}
+                  onChange={(v) =>
+                    setVideoWf((prev) => ({ ...prev, fields: { ...prev.fields, [f.jsonPath]: v } }))
+                  }
+                  shot={shot}
+                  model={videoDetail?.model}
+                  versions={videos}
+                />
+              ) : null
+            }
+          />
           {genVideo.isError && <ErrorState message={String(genVideo.error)} />}
           <div className="space-y-3">
             {videos.map((v: ShotVersion) => (
@@ -248,12 +284,54 @@ function VersionCard({
   onReject: () => void
   rejectPending: boolean
 }) {
+  const [lightbox, setLightbox] = useState(false)
+  const [showWf, setShowWf] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const mediaUrl = v.artifactPath ? `/media/comfy/${v.artifactPath}` : ''
+
+  async function copyPath() {
+    const path = v.artifactPath ?? ''
+    if (!path) return
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(path)
+      } else {
+        // 非安全上下文降级：临时 textarea + execCommand
+        const ta = document.createElement('textarea')
+        ta.value = path
+        ta.style.position = 'fixed'
+        ta.style.opacity = '0'
+        document.body.appendChild(ta)
+        ta.select()
+        document.execCommand('copy')
+        document.body.removeChild(ta)
+      }
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setCopied(false)
+    }
+  }
+
   return (
     <div className="rounded-md border bg-card p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="truncate text-2xs text-muted-foreground">
-          {KIND_LABEL[v.kind] ?? v.kind} v{v.versionNo} · {v.backend}
-          {v.seed != null && ` · seed ${v.seed}`}
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="truncate text-2xs text-muted-foreground">
+            {KIND_LABEL[v.kind] ?? v.kind} v{v.versionNo} · {v.backend}
+            {v.seed != null && ` · seed ${v.seed}`}
+          </span>
+          {v.artifactPath && (
+            <Button variant="ghost" size="xs" onClick={copyPath} title="复制 artifactPath">
+              {copied ? '已复制' : '复制地址'}
+            </Button>
+          )}
+          {v.paramsJson && (
+            <Button variant="ghost" size="xs" onClick={() => setShowWf(true)} title="查看该版本工作流参数">
+              显示工作流
+            </Button>
+          )}
         </div>
         <Badge
           tone={
@@ -287,15 +365,16 @@ function VersionCard({
         <>
           {v.kind === 'FIRST_FRAME' ? (
             <img
-              className="mt-2 max-h-56 w-full rounded border object-contain bg-muted/40"
-              src={`/media/comfy/${v.artifactPath}`}
+              className="mt-2 max-h-56 w-full cursor-zoom-in rounded border object-contain bg-muted/40"
+              src={mediaUrl}
               alt={`图片 v${v.versionNo}`}
+              onClick={() => setLightbox(true)}
             />
           ) : (
             <video
               className="mt-2 max-h-56 w-full rounded border bg-black"
               controls
-              src={`/media/comfy/${v.artifactPath}`}
+              src={mediaUrl}
             />
           )}
           {v.reviewState === 'PENDING' && !rejecting && (
@@ -341,6 +420,86 @@ function VersionCard({
           )}
         </>
       )}
+
+      {lightbox && (
+        <LightboxDialog url={mediaUrl} onClose={() => setLightbox(false)} />
+      )}
+      {showWf && (
+        <WorkflowDialog paramsJson={v.paramsJson} onClose={() => setShowWf(false)} />
+      )}
+    </div>
+  )
+}
+
+/**
+ * 原尺寸图片预览弹框：img 不缩放（原始尺寸），但弹框容器最大宽/高不超过浏览器
+ * 短边（min(100vw,100vh) 再留边距），图片超出部分在容器内滚动。Esc / 点遮罩关闭。
+ */
+function LightboxDialog({ url, onClose }: { url: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[calc(min(100vw,100vh)-2rem)] max-w-[calc(min(100vw,100vh)-2rem)] flex-col rounded-lg border bg-card shadow-pop"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+          <span className="text-xs font-medium">原始尺寸预览</span>
+          <Button variant="ghost" size="xs" onClick={onClose}>
+            关闭
+          </Button>
+        </div>
+        <div className="overflow-auto bg-muted/40 p-2">
+          <img src={url} alt="原始尺寸图片" className="block" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 「显示工作流」弹框：按版本留档 paramsJson 只读展示该次生成的工作流参数。 */
+function WorkflowDialog({
+  paramsJson,
+  onClose,
+}: {
+  paramsJson?: string | null
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 p-4 pt-[8vh]"
+      onClick={onClose}
+    >
+      <div
+        className="max-h-[84vh] w-full max-w-2xl overflow-y-auto rounded-lg border bg-card p-4 shadow-pop"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="text-sm font-semibold">该版本的工作流参数（只读）</h3>
+          <Button variant="ghost" size="xs" onClick={onClose}>
+            关闭
+          </Button>
+        </div>
+        <WorkflowReadonlyView paramsJson={paramsJson} />
+      </div>
     </div>
   )
 }

@@ -211,11 +211,7 @@ public class StoryboardService {
             if (latest == null) {
                 // 无草稿：槽位已有内容视作已定稿（手工建的镜头），否则补一轮优化再确认
                 if (s.getVisualPrompt() == null || s.getVisualPrompt().isBlank()) {
-                    PromptDraft promptDraft = new PromptDraft();
-                    promptDraft.setOwnerType(PromptDraftOwnerType.SHOT.name);
-                    promptDraft.setOwnerId(s.getId());
-                    promptDraft.setFieldName(PromptDraftFieldName.VISUAL_PROMPT.name);
-                    gate.optimize(promptDraft);
+                    gate.optimize(PromptDraftOwnerType.SHOT.name, s.getId(), PromptDraftFieldName.VISUAL_PROMPT.name, null);
                     latest = drafts
                             .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
                                 PromptDraftOwnerType.SHOT.name, s.getId(), PromptDraftFieldName.VISUAL_PROMPT.name).orElse(null);
@@ -265,7 +261,107 @@ public class StoryboardService {
         return toRow(shots.findById(shotId).orElseThrow());
     }
 
+    /**
+     * 闸门①手动添加分镜（用户自填参数，不经 LLM 切镜/优化）。
+     *
+     * <p>与自动切镜的区别：提示词由用户直接给出，<b>直接写入槽位</b>（visualPrompt /
+     * negativePrompt），不产草稿——手工建的镜头"槽位有内容即视作已定稿"
+     * （见 {@link #confirmAll} 与 {@link #toRow} 的无草稿分支）。
+     *
+     * <p>序号：body 给了 ord 且未被占用 → 用之；被占用 → 从该位置起后续镜头顺延后移；
+     * 未给/越界 → 追加到表尾。项目状态：DRAFT → STORYBOARD（其余状态不动）。
+     *
+     * @param spec 用户填写的镜头字段（visualPrompt 必填，其余可空走默认）
+     * @return 新镜头对应的整表行
+     */
+    @Transactional
+    public Row addShot(Long projectId, AddShotSpec spec) {
+        Project project = projects.findById(projectId)
+                .orElseThrow(() -> new NotFoundException("project " + projectId));
+        if (spec == null || spec.visualPrompt() == null || spec.visualPrompt().isBlank()) {
+            throw new IllegalArgumentException("画面提示词（visualPrompt）必填");
+        }
+
+        List<Shot> existing = shots.findByProject_IdOrderByOrdAsc(projectId);
+        int ord = resolveOrd(spec.ord(), existing);
+        // 占用已有序号：把 >= ord 的镜头整体后移一位（倒序改，避免唯一约束冲突）
+        List<Shot> toShift = existing.stream()
+                .filter(s -> s.getOrd() >= ord)
+                .sorted((a, b) -> Integer.compare(b.getOrd(), a.getOrd()))
+                .toList();
+        for (Shot s : toShift) {
+            s.setOrd(s.getOrd() + 1);
+            shots.save(s);
+        }
+
+        GenerationBackend backend = backendFor(project.getVideoModel());
+        double duration = spec.durationSec() == null || spec.durationSec() <= 0
+                ? DEFAULT_MANUAL_DURATION
+                : spec.durationSec();
+
+        Shot shot = new Shot();
+        shot.setProject(project);
+        shot.setOrd(ord);
+        shot.setVisualPrompt(spec.visualPrompt().trim());
+        shot.setNegativePrompt(blankToNull(spec.negativePrompt()));
+        shot.setDurationSec(backend != null ? backend.snapDuration(duration) : duration);
+        shot.setShotSize(blankToDefault(spec.shotSize(), DEFAULT_SHOT_SIZE));
+        shot.setCameraMove(blankToDefault(spec.cameraMove(), DEFAULT_CAMERA_MOVE));
+        shot.setDialogue(blankToNull(spec.dialogue()));
+        shot.setFirstFrameSource(project.getMode() == ProjectMode.ONE_SHOT && ord > 1
+                ? FirstFrameSource.PREV_LAST_FRAME : FirstFrameSource.REFERENCE);
+        shot.setState(ShotState.PENDING);
+        shot.setCreatedAt(LocalDateTime.now().format(TS));
+        // 角色/场景按名字挂接既有引用（与自动切镜同策略，对不上则忽略）
+        Map<String, CharacterRef> charsByName = indexCharacters(projectId);
+        if (spec.speaker() != null && !spec.speaker().isBlank()) {
+            shot.setSpeaker(charsByName.get(spec.speaker().trim()));
+        }
+        Map<String, Scene> scenesByName = indexScenes(projectId);
+        if (spec.scene() != null && !spec.scene().isBlank()) {
+            shot.setScene(scenesByName.get(spec.scene().trim()));
+        }
+        Shot saved = shots.save(shot);
+
+        if (STATE_PROJECT_DRAFT.equals(project.getState())) {
+            project.setState(STATE_STORYBOARD);
+            project.setUpdatedAt(LocalDateTime.now().format(TS));
+            projects.save(project);
+        }
+        return toRow(saved);
+    }
+
+    /** 手动添加分镜的入参（全部来自用户填写；仅 visualPrompt 必填）。 */
+    public record AddShotSpec(Integer ord, Double durationSec, String shotSize, String cameraMove,
+                              String visualPrompt, String negativePrompt, String dialogue,
+                              String speaker, String scene) {}
+
     // ── 内部 ──────────────────────────────────────────────
+
+    /** 项目状态：仅创建、尚未切镜。 */
+    private static final String STATE_PROJECT_DRAFT = "DRAFT";
+
+    /** 手动分镜默认值（与 StoryboardPlanner 回退切句一致）。 */
+    private static final double DEFAULT_MANUAL_DURATION = 5.0;
+    private static final String DEFAULT_SHOT_SIZE = "中景";
+    private static final String DEFAULT_CAMERA_MOVE = "固定";
+
+    /** 计算新镜头序号：未给/越界 → 表尾；给了且合法 → 用之（调用方负责后移冲突镜头）。 */
+    private static int resolveOrd(Integer requested, List<Shot> existing) {
+        int max = existing.stream().mapToInt(Shot::getOrd).max().orElse(0);
+        if (requested == null || requested <= 0 || requested > max + 1) {
+            return max + 1;
+        }
+        return requested;
+    }
+
+    private static String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private static String blankToDefault(String s, String fallback) {
+        return s == null || s.isBlank() ? fallback : s.trim();
+    }
 
     private Row toRow(Shot s) {
         PromptDraft latest = drafts

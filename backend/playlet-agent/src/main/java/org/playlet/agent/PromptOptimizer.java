@@ -7,6 +7,8 @@ import org.playlet.domain.entity.Project;
 import org.playlet.domain.entity.PromptDraft;
 import org.playlet.domain.entity.Scene;
 import org.playlet.domain.entity.Shot;
+import org.playlet.domain.model.PromptDraftFieldName;
+import org.playlet.domain.model.PromptDraftOwnerType;
 import org.playlet.domain.repo.PromptDraftRepository;
 import org.playlet.llm.LlmClient;
 import org.springframework.stereotype.Service;
@@ -26,6 +28,10 @@ import java.util.List;
  *
  * <p>LLM 不可用/输出不可解析时<b>确定性回退</b>：规则拼装（风格前缀 + 景别运镜 +
  * 角色/场景锚点 + 默认负向），保证确认门永远有草稿可审，主流程不被 LLM 可用性卡死。
+ *
+ * <p>另含一个与镜头/草稿业务无关的即席能力 {@link #generatePromptText}（审核台
+ * 「生成提示词」按钮）：把工作流 model + 输入框内容 + 用户标识/反馈拼成一条消息发 LLM，
+ * 返回文本给前端展示，不落库。
  */
 @Service
 public class PromptOptimizer {
@@ -41,7 +47,7 @@ public class PromptOptimizer {
                     + "ugly, duplicate, morbid, out of frame";
 
     private static final String SYSTEM_PROMPT = """
-            你是短剧生成平台的提示词优化 agent。把用户的粗糙画面描述优化为图像/视频生成模型可用的 **英文提示词**。
+            你是短剧生成平台的提示词优化 agent。把用户的粗糙画面描述优化为图像/视频生成模型可用的提示词。
 
             规则：
             1. 保留用户描述的全部语义要素（人物、动作、环境、情绪），不得删改剧情含义。
@@ -51,6 +57,18 @@ public class PromptOptimizer {
             5. 负向提示列出该画面最可能崩坏的项（手部、文字水印、多余肢体等）。
             6. 只输出一个 JSON 对象，不要 markdown 代码块、不要解释：
                {"prompt": "优化后的提示词", "negative": "负向提示"}
+            """;
+
+    /** {@link #generatePromptText} 的系统提示：即席提示词生成/优化，不产 JSON、不落库。 */
+    private static final String GENERATE_SYSTEM_PROMPT = """
+            你是 AI 图像/视频生成提示词专家。用户会给出：目标模型、提示词标识、当前提示词内容、用户反馈意见。
+
+            规则：
+            1. 按目标模型的提示词习惯（tag 串或自然语言描述）产出提示词，风格与该模型对齐。
+            2. 严格遵守「提示词标识」：标识为负面/负向类时输出该模型可用的负向提示词（排除项），
+               标识为正面/正向类时输出正向提示词（画面要素）。
+            3. 保留当前提示词内容的语义要素，并针对用户反馈意见做针对性修改；反馈为空时只做质量提升。
+            4. 只输出提示词文本本身——不要解释、不要 markdown、不要引号、不要 JSON、不要前后缀说明。
             """;
 
     private final LlmClient llm;
@@ -76,11 +94,11 @@ public class PromptOptimizer {
             throw new IllegalArgumentException("shot " + shot.getId() + " 无原始描述，无法优化");
         }
         String context = buildContext(project, shot);
-        Optimized out = optimizeWithLlm(base, context, feedback);
+        Optimized out = optimizeWithLlm(base, context, feedback, true);
         if (out == null) {
             out = fallbackOptimize(base, project, shot);
         }
-        return saveDraft("SHOT", shot.getId(), "visual_prompt", base, out.prompt(), out.negative());
+        return saveDraft(PromptDraftOwnerType.SHOT.name, shot.getId(), PromptDraftFieldName.VISUAL_PROMPT.name, base, out.prompt(), out.negative());
     }
 
     /**
@@ -98,12 +116,52 @@ public class PromptOptimizer {
         }
         String negative = drafts
                 .findFirstByOwnerTypeAndOwnerIdAndFieldNameOrderByVersionNoDesc(
-                        "SHOT", shot.getId(), "visual_prompt")
+                    PromptDraftOwnerType.SHOT.name, shot.getId(), PromptDraftFieldName.VISUAL_PROMPT.name)
                 .map(PromptDraft::getNegativePrompt)
                 .filter(s -> s != null && !s.isBlank())
                 .orElse(DEFAULT_NEGATIVE);
-        return saveDraft("SHOT", shot.getId(), "visual_prompt",
+        return saveDraft(PromptDraftOwnerType.SHOT.name, shot.getId(), PromptDraftFieldName.VISUAL_PROMPT.name,
                 shot.getVisualPrompt(), content.trim(), negative);
+    }
+
+    /**
+     * 审核台「生成提示词」按钮：与工作流无关业务解耦的纯提示词生成能力。
+     *
+     * <p>把四个字段（工作流元信息的 model、CLIPTextEncode 输入框当前内容、用户填写的
+     * 提示词标识、用户填写的反馈意见）构造成<b>一条消息</b>发给 LLM，返回其输出原文
+     * （仅去 markdown 包裹）。<b>不落库、不产草稿、不写槽位</b>——结果仅供前端展示，
+     * 由用户自行决定是否填入输入框。
+     *
+     * <p>与 {@link #optimizeShotPrompt} 的区别：那个是镜头维度的草稿机（走确认门），
+     * 这个是工作流参数维度的即席工具（无状态）。LLM 不可用即抛
+     * {@link IllegalStateException}，不做确定性回退——回退拼装对"生成/优化提示词"没有意义。
+     *
+     * @param model    工作流元信息的模型名（如 anima / minimax_h3），可空
+     * @param content  CLIPTextEncode 输入框当前内容，可空（空 = 从零生成）
+     * @param flag     提示词标识：用户填写的正面/负面等标记，可空
+     * @param feedback 用户反馈意见（审核台驳回意见），可空
+     * @return LLM 输出的提示词文本（非空）
+     * @throws IllegalStateException LLM 不可用 / 输出为空
+     */
+    public String generatePromptText(String model, String content, String flag, String feedback) {
+        StringBuilder user = new StringBuilder();
+        user.append("目标模型：").append(blankTo(model, "未知")).append('\n');
+        user.append("提示词标识：").append(blankTo(flag, "未指定")).append('\n');
+        user.append("当前提示词内容：").append(blankTo(content, "（空，请从零生成）")).append('\n');
+        user.append("用户反馈意见：").append(blankTo(feedback, "（无）")).append('\n');
+        user.append("请针对上面的模型与标识，给出优化后的提示词。");
+
+        String raw;
+        try {
+            raw = llm.complete(GENERATE_SYSTEM_PROMPT, user.toString());
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("提示词生成失败（LLM 不可用）：" + e.getMessage(), e);
+        }
+        String out = PromptTranslator.sanitize(raw);
+        if (out.isEmpty()) {
+            throw new IllegalStateException("提示词生成失败（LLM 返回空输出）");
+        }
+        return out;
     }
 
     /** 优化角色外貌描述（参考图生成前确认）。 */
@@ -118,7 +176,7 @@ public class PromptOptimizer {
         if (out == null) {
             out = new Optimized(stylePrefix(project) + base + ", 全身立绘, 清晰面部", DEFAULT_NEGATIVE);
         }
-        return saveDraft("CHARACTER", character.getId(), "appearance", base, out.prompt(), out.negative());
+        return saveDraft(PromptDraftOwnerType.CHARACTER.name, character.getId(), "appearance", base, out.prompt(), out.negative());
     }
 
     /** 优化场景描述（参考图生成前确认）。 */
@@ -133,18 +191,27 @@ public class PromptOptimizer {
         if (out == null) {
             out = new Optimized(stylePrefix(project) + base + ", 空场景, 无人物, 广角", DEFAULT_NEGATIVE);
         }
-        return saveDraft("SCENE", scene.getId(), "description", base, out.prompt(), out.negative());
+        return saveDraft(PromptDraftOwnerType.SCENE.name, scene.getId(), "description", base, out.prompt(), out.negative());
     }
 
     // ── 内部 ──────────────────────────────────────────────
 
-    /** LLM 优化；任何失败返回 null（调用方走确定性回退）。 */
     private Optimized optimizeWithLlm(String base, String context, String feedback) {
+        return optimizeWithLlm(base, context, feedback, false);
+    }
+
+    /** LLM 优化；任何失败返回 null（调用方走确定性回退）。 */
+    private Optimized optimizeWithLlm(String base, String context, String feedback, boolean useChinese) {
         StringBuilder user = new StringBuilder();
         user.append(context).append('\n');
         user.append("原始描述：").append(base).append('\n');
         if (feedback != null && !feedback.isBlank()) {
             user.append("用户上一轮驳回意见（必须针对性修改）：").append(feedback).append('\n');
+        }
+        if (useChinese) {
+            user.append("请生成中文提示词。");
+        } else {
+            user.append("请生成英文提示词。");
         }
         try {
             String raw = llm.complete(SYSTEM_PROMPT, user.toString());
@@ -244,6 +311,11 @@ public class PromptOptimizer {
 
     private static String nz(String s) {
         return s == null ? "" : s;
+    }
+
+    /** 空白（null/全空白）→ 占位文案，用于 {@link #generatePromptText} 拼消息。 */
+    private static String blankTo(String s, String fallback) {
+        return s == null || s.isBlank() ? fallback : s.trim();
     }
 
     /** LLM 优化产物。 */

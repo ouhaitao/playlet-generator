@@ -352,6 +352,64 @@ class StoryboardServiceTest {
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // ── 手动添加分镜 ─────────────────────────────────────
+
+    @Test
+    void addShot_writesSlotsDirectly_andAppendsToTail() {
+        service.generate(1L);
+        StoryboardService.Row added = service.addShot(1L, new StoryboardService.AddShotSpec(
+                null, null, null, null, "李明转身离开，全景", "blurry, extra fingers",
+                "再见。", null, null));
+
+        // 追加表尾、默认时长/景别/运镜
+        assertThat(added.ord()).isEqualTo(3);
+        assertThat(added.durationSec()).isEqualTo(5.0);
+        assertThat(added.shotSize()).isEqualTo("中景");
+        assertThat(added.cameraMove()).isEqualTo("固定");
+        // 提示词直接写槽位（不走草稿）→ 视作已定稿
+        assertThat(added.visualPrompt()).isEqualTo("李明转身离开，全景");
+        assertThat(added.negativePrompt()).isEqualTo("blurry, extra fingers");
+        assertThat(added.draftId()).isNull();
+        assertThat(added.confirmed()).isTrue();
+        assertThat(added.dialogue()).isEqualTo("再见。");
+        // 项目状态不因加分镜回退
+        assertThat(project.getState()).isEqualTo(StoryboardService.STATE_STORYBOARD);
+    }
+
+    @Test
+    void addShot_onDraftProject_advancesToStoryboard() {
+        StoryboardService.Row added = service.addShot(1L, new StoryboardService.AddShotSpec(
+                null, 3.0, "特写", "推", "空镜：雨中的街道", null, null, null, null));
+
+        assertThat(added.ord()).isEqualTo(1);
+        assertThat(added.durationSec()).isEqualTo(3.0);
+        assertThat(added.shotSize()).isEqualTo("特写");
+        assertThat(added.cameraMove()).isEqualTo("推");
+        assertThat(project.getState()).isEqualTo(StoryboardService.STATE_STORYBOARD);
+    }
+
+    @Test
+    void addShot_withOccupiedOrd_shiftsFollowingShots() {
+        service.generate(1L); // 现有 #1 #2
+
+        StoryboardService.Row added = service.addShot(1L, new StoryboardService.AddShotSpec(
+                2, null, null, null, "插入的第二镜", null, null, null, null));
+
+        assertThat(added.ord()).isEqualTo(2);
+        List<Shot> all = shots.byProject(1L);
+        assertThat(all).hasSize(3);
+        assertThat(all).extracting(Shot::getOrd).containsExactly(1, 2, 3);
+        assertThat(all.get(1).getVisualPrompt()).isEqualTo("插入的第二镜");
+    }
+
+    @Test
+    void addShot_blankPrompt_throws() {
+        assertThatThrownBy(() -> service.addShot(1L, new StoryboardService.AddShotSpec(
+                null, null, null, null, "  ", null, null, null, null)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("必填");
+    }
+
     // ── COMPOSED 状态衔接（②合成完成后项目状态推进）──────────
 
     @Test

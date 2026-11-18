@@ -1,6 +1,6 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { api, type WorkflowDetail, type WorkflowFieldParam, type WorkflowType } from '@/lib/api'
+import { api, type WorkflowDetail, type WorkflowFieldParam, type WorkflowNodeGroup, type WorkflowType } from '@/lib/api'
 import { Badge } from '@/components/ui/badge'
 import { Input, Textarea } from '@/components/ui/input'
 import { ErrorState, SkeletonRows } from '@/components/ui/states'
@@ -8,6 +8,18 @@ import { ErrorState, SkeletonRows } from '@/components/ui/states'
 const SELECT_CLS =
   'h-8 w-full rounded-md border border-input bg-card px-2 text-sm ' +
   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50'
+
+/** 提示词节点类型：展示时排最前、输入框占满整行（审核台按钮区也挂在它下面）。 */
+export const CLIP_TEXT_ENCODE = 'CLIPTextEncode'
+
+export function isClipTextGroup(g: WorkflowNodeGroup): boolean {
+  return g.classType === CLIP_TEXT_ENCODE
+}
+
+/** CLIPTextEncode 节点组排到最前（多个之间保持原相对顺序，其余组顺序不变）。 */
+export function sortGroupsClipFirst(groups: WorkflowNodeGroup[]): WorkflowNodeGroup[] {
+  return [...groups.filter(isClipTextGroup), ...groups.filter((g) => !isClipTextGroup(g))]
+}
 
 /** 受控值：选中的工作流 + 用户填写的参数（jsonPath → 原始字符串/布尔）。 */
 export interface WorkflowParamValue {
@@ -44,15 +56,21 @@ export function buildParams(
  * 下拉框按类型（IMAGE/VIDEO）过滤工作流库 → 选中后 GET /api/workflows/{name}
  * 拉取解析元数据 → 按节点分组渲染所有可填参数（defaultValue 预填）。
  * 用户填完后父组件经 buildParams 收集 {jsonPath: value} 提交生成。
+ *
+ * <p>CLIPTextEncode（提示词）节点组排在最前、输入框占满整行；`renderFieldExtra`
+ * 允许父组件（审核台）在每个提示词字段下方注入按钮区（填入分镜提示词/翻译/生成）。
  */
 export default function WorkflowParamPanel({
   type,
   value,
   onChange,
+  renderFieldExtra,
 }: {
   type: WorkflowType
   value: WorkflowParamValue
   onChange: (v: WorkflowParamValue) => void
+  /** 在某字段编辑器下方追加自定义内容（审核台提示词工具按钮区）。 */
+  renderFieldExtra?: (f: WorkflowFieldParam, group: WorkflowNodeGroup) => ReactNode
 }) {
   const { data: entries } = useQuery({
     queryKey: ['workflows', type],
@@ -82,6 +100,11 @@ export default function WorkflowParamPanel({
   }, [detail?.name])
 
   const options = useMemo(() => entries ?? [], [entries])
+  /** CLIPTextEncode 组排最前展示（不改变 detail.groups 本身，避免影响 buildParams 顺序无关逻辑）。 */
+  const orderedGroups = useMemo(
+    () => (detail ? sortGroupsClipFirst(detail.groups) : []),
+    [detail],
+  )
 
   function setField(path: string, v: string | boolean) {
     onChange({ workflow: value.workflow, fields: { ...value.fields, [path]: v } })
@@ -140,46 +163,57 @@ export default function WorkflowParamPanel({
         <p className="text-2xs text-muted-foreground">该工作流没有可人工填写的参数。</p>
       )}
 
-      {detail && detail.groups.length > 0 && (
+      {detail && orderedGroups.length > 0 && (
         <div className="max-h-96 space-y-3 overflow-y-auto rounded-md border bg-muted/20 p-2.5">
-          {detail.groups.map((g) => (
-            <details key={g.nodeId} open={g.fields.length <= 6}>
-              <summary className="cursor-pointer text-xs font-medium">
-                <span className="font-mono text-2xs text-muted-foreground">[{g.nodeId}]</span>{' '}
-                {g.nodeTitle}
-                {g.nodeTitle !== g.classType && (
-                  <span className="ml-1 font-mono text-2xs text-muted-foreground">
-                    {g.classType}
-                  </span>
-                )}
-              </summary>
-              <div className="mt-1.5 grid grid-cols-1 gap-2 md:grid-cols-2">
-                {g.fields.map((f) => (
-                  <FieldEditor
-                    key={f.jsonPath}
-                    f={f}
-                    value={value.fields[f.jsonPath]}
-                    onChange={(v) => setField(f.jsonPath, v)}
-                  />
-                ))}
-              </div>
-            </details>
-          ))}
+          {orderedGroups.map((g) => {
+            const isClip = isClipTextGroup(g)
+            return (
+              <details key={g.nodeId} open={isClip || g.fields.length <= 6}>
+                <summary className="cursor-pointer text-xs font-medium">
+                  <span className="font-mono text-2xs text-muted-foreground">[{g.nodeId}]</span>{' '}
+                  {g.nodeTitle}
+                  {g.nodeTitle !== g.classType && (
+                    <span className="ml-1 font-mono text-2xs text-muted-foreground">
+                      {g.classType}
+                    </span>
+                  )}
+                </summary>
+                {/* 提示词节点单列全宽，其余节点两列紧凑 */}
+                <div className={isClip ? 'mt-1.5 grid grid-cols-1 gap-2' : 'mt-1.5 grid grid-cols-1 gap-2 md:grid-cols-2'}>
+                  {g.fields.map((f) => (
+                    <FieldEditor
+                      key={f.jsonPath}
+                      f={f}
+                      value={value.fields[f.jsonPath]}
+                      onChange={(v) => setField(f.jsonPath, v)}
+                      fullwidth={isClip}
+                      extra={renderFieldExtra?.(f, g)}
+                    />
+                  ))}
+                </div>
+              </details>
+            )
+          })}
         </div>
       )}
     </div>
   )
 }
 
-/** 单个参数编辑器：按 kind 选控件；长文本/提示词用多行。 */
+/** 单个参数编辑器：按 kind 选控件；长文本/提示词用多行。
+ *  fullwidth=true（CLIPTextEncode）时控件占满整行；extra 渲染在控件下方（按钮区）。 */
 function FieldEditor({
   f,
   value,
   onChange,
+  fullwidth = false,
+  extra,
 }: {
   f: WorkflowFieldParam
   value: string | boolean | undefined
   onChange: (v: string | boolean) => void
+  fullwidth?: boolean
+  extra?: ReactNode
 }) {
   const label = (
     <div className="text-2xs text-muted-foreground">
@@ -190,14 +224,17 @@ function FieldEditor({
 
   if (f.kind === 'BOOLEAN') {
     return (
-      <label className="flex items-center gap-2 self-center text-xs">
-        <input
-          type="checkbox"
-          checked={value === true}
-          onChange={(e) => onChange(e.target.checked)}
-        />
-        <span className="font-mono text-2xs">{f.inputName}</span>
-      </label>
+      <div className={extra ? 'space-y-1' : undefined}>
+        <label className="flex items-center gap-2 self-center text-xs">
+          <input
+            type="checkbox"
+            checked={value === true}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          <span className="font-mono text-2xs">{f.inputName}</span>
+        </label>
+        {extra}
+      </div>
     )
   }
 
@@ -208,25 +245,28 @@ function FieldEditor({
       String(value ?? '').includes('\n'))
 
   return (
-    <label className="block space-y-0.5">
-      {label}
-      {longText ? (
-        <Textarea
-          rows={3}
-          className="text-xs"
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      ) : (
-        <Input
-          type={f.kind === 'NUMBER' ? 'number' : 'text'}
-          step={f.kind === 'NUMBER' ? 'any' : undefined}
-          className="h-7 text-xs"
-          title={f.jsonPath}
-          value={typeof value === 'string' ? value : ''}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      )}
-    </label>
+    <div className={extra ? 'block space-y-1' : 'block space-y-0.5'}>
+      <label className="block space-y-0.5">
+        {label}
+        {longText ? (
+          <Textarea
+            rows={fullwidth ? 5 : 3}
+            className="w-full text-xs"
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        ) : (
+          <Input
+            type={f.kind === 'NUMBER' ? 'number' : 'text'}
+            step={f.kind === 'NUMBER' ? 'any' : undefined}
+            className="h-7 w-full text-xs"
+            title={f.jsonPath}
+            value={typeof value === 'string' ? value : ''}
+            onChange={(e) => onChange(e.target.value)}
+          />
+        )}
+      </label>
+      {extra}
+    </div>
   )
 }

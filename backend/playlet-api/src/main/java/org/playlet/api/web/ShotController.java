@@ -4,10 +4,7 @@ import org.playlet.domain.entity.CharacterRef;
 import org.playlet.domain.entity.Scene;
 import org.playlet.domain.entity.Shot;
 import org.playlet.domain.entity.ShotVersion;
-import org.playlet.domain.repo.CharacterRefRepository;
-import org.playlet.domain.repo.SceneRepository;
-import org.playlet.domain.repo.ShotRepository;
-import org.playlet.domain.repo.ShotVersionRepository;
+import org.playlet.domain.repo.*;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,7 +23,7 @@ public class ShotController {
     private final ShotVersionRepository versions;
     private final CharacterRefRepository characters;
     private final SceneRepository scenes;
-    private final org.playlet.domain.repo.ProjectRepository projects;
+    private final ProjectRepository projects;
 
     public ShotController(ShotRepository shots, ShotVersionRepository versions,
                           CharacterRefRepository characters, SceneRepository scenes,

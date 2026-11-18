@@ -47,11 +47,7 @@ public class DraftGateService {
 
     /** 触发 agent 优化，产出新草稿（旧未决草稿作废）。feedback 可空 = 首轮。 */
     @Transactional
-    public PromptDraft optimize(PromptDraft promptDraft) {
-        String ownerType = promptDraft.getOwnerType();
-        Long ownerId = promptDraft.getOwnerId();
-        String fieldName = promptDraft.getFieldName();
-        String feedback = promptDraft.getFeedback();
+    public PromptDraft optimize(String ownerType, Long ownerId, String fieldName, String feedback) {
         if (ownerType == null || ownerId == null || fieldName == null) {
             throw new IllegalArgumentException("ownerType / ownerId / fieldName 必填");
         }
