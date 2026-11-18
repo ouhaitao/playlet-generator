@@ -1,10 +1,10 @@
 package org.playlet.llm;
 
+import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.ai.chat.messages.SystemMessage;
 import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.stereotype.Component;
 
@@ -17,10 +17,10 @@ import java.util.List;
 @Component
 public class OpenAiCompatibleLlmClient implements LlmClient {
 
-    private final ChatModel chatModel;
+    private final ChatClient chatClient;
 
-    public OpenAiCompatibleLlmClient(ChatModel chatModel) {
-        this.chatModel = chatModel;
+    public OpenAiCompatibleLlmClient(ChatClient chatClient) {
+        this.chatClient = chatClient;
     }
 
     @Override
@@ -39,7 +39,7 @@ public class OpenAiCompatibleLlmClient implements LlmClient {
             messages.add(toSpring(m));
         }
         messages.add(new UserMessage(userMessage));
-        String out = chatModel.call(new Prompt(messages)).getResult().getOutput().getText();
+        String out = chatClient.prompt().messages(messages).call().content();
         return out == null ? "" : out;
     }
 
